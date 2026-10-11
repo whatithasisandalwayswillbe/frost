@@ -24,12 +24,14 @@ test('release signatures reject tampering, wrong key, namespace, and malformed d
     assert.throws(() => verifySSHSig(key.authorized, msg, bad), /isn't signed/);
 });
 
-// The updater's key, install/release-signing.pub and the installer's RELEASE_KEY must be the same.
+// The updater's key, install/release-signing.pub and both installers' keys must be the same.
 test('release key stays aligned with installed and existing verification paths', async () => {
   const pub = await readFile(new URL('../../../install/release-signing.pub', import.meta.url), 'utf8');
   assert.equal(pub.trim(), releaseKey);
   const script = await readFile(new URL('../../../install/install.sh', import.meta.url), 'utf8');
   assert.ok(script.includes('RELEASE_KEY="' + releaseKey + '"'));
+  const powershell = await readFile(new URL('../../../install/install.ps1', import.meta.url), 'utf8');
+  assert.ok(powershell.includes("\n  $ReleaseKey = '" + releaseKey + "'\n"));
 });
 
 // A release beats its prereleases, and numeric identifiers compare as numbers and sort before

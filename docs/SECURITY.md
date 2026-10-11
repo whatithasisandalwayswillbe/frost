@@ -87,7 +87,16 @@ frost doesn't protect against:
 | Archive members use permitted paths and types and stay within size limits | Traversal, links, device paths and excessive extraction |
 | The staged runtime and application run and report their expected versions | Activating a package that fails its startup probes |
 
-Both installation and updates fail closed when signature verification fails. The shell installer requires `ssh-keygen` from OpenSSH 8.1 or newer before running the bundled installer. The updater verifies SSH signatures directly through Node's cryptography API. It accepts the release key in `src/platform/signature.ts`; the same key is in `install/release-signing.pub` and `install/install.sh`.
+Installation and updates fail closed when signature verification fails. Each way of installing checks the same signed `checksums.txt` before anything from the archive is installed:
+
+| Installer | Checks the signature with |
+|---|---|
+| `install/install.sh` | `ssh-keygen -Y verify`, from OpenSSH 8.1 or newer |
+| `install/install.ps1` | The archive's `node.exe`, running a verifier embedded in the script. The checksum must match first, and Windows must report a valid Authenticode signature from the OpenJS Foundation before that runtime runs |
+| `getfrost` on npm | Copies of the updater's own modules, running on the Node.js that npm or pnpm uses |
+| `frost update` | Node's cryptography API, in `src/platform/signature.ts` |
+
+The updater accepts the release key in `src/platform/signature.ts`. The same key is in `install/release-signing.pub`, `install/install.sh` and `install/install.ps1`, and the npm package carries a copy of `signature.ts`. The installer scripts are only as trustworthy as this repository's `main` branch, and the npm package as the npm account that publishes it. Once installed, frost checks every update against the key built into it.
 
 The archive includes the runtime, versioned scripts and assets. The only native executable shipped is the pinned official Node.js runtime. Windows runtime bytes retain their upstream Authenticode signature; the signed checksum list also covers frost's scripts.
 

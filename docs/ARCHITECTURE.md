@@ -13,8 +13,8 @@ frost runs as a TypeScript application on its bundled Node.js runtime. It has no
 | `src/tui/` | The snapshot browser, setup, terminal renderer and development demo |
 | `assets/` | The BIP39 wordlist, wordmarks and sound effects |
 | `test/` | Unit, integration, security and output reference tests |
-| `tools/` | Build, dependency audit, packaging, the package smoke test and the benchmark |
-| `install/` | The shell installer, the installer and launcher every package carries, and the release public key |
+| `tools/` | Build, dependency audit, packaging, the npm package, the package smoke test and the benchmark |
+| `install/` | The shell and PowerShell installers, the npm package's installer, the installer and launcher every package carries, and the release public key |
 | `scripts/` | The manual release script |
 
 `cli` connects the components. `engine` builds on `core/repo`, `core/manifest` and `core/chunker`. The repository seals objects through `core/crypto`; storage clients only handle bytes. The only runtime npm dependency is the pure JavaScript TOML parser. Node supplies HTTP, cryptography, zstd and worker threads.
@@ -152,6 +152,10 @@ The updater verifies the signed checksum list, downloads an archive of at most 1
 An installed frost applies these checks to every later release, so they can't be tightened for a release that older installs must read. They accept ahead of use instead: Node 26.10 or newer with no ceiling, and a few file types no release ships yet. A release the installed frost can't read says to reinstall with the installer.
 
 Other parts of an install are fixed the same way. An update replaces the version folder, the runtime, `manifest.json` and `current.json`, but not `launch.mjs` or the launchers on PATH, so only the installer renews those. Every install keeps starting the CLI at `versions/<version>/src/cli/main.js` through the `launch.mjs` it was installed with, and reads a new release's version as the last word of `main.js --version`. `install/launch.mjs` is small on purpose and `test/platform/launcher.test.ts` pins its behavior. Anything that has to change belongs in `main.js`, which ships with each version. If `launch.mjs` itself ever has to change, the updater must first learn to replace it. An install then gets the new launcher on the update after the one that brings that code, and later still if it skips releases.
+
+Three things install a package: `install/install.sh`, `install/install.ps1` and the `getfrost` npm package. Each checks the signed checksums, then runs the package's own `install.mjs` with the package's runtime, so every install has the same layout and the updater owns it afterwards. `install.ps1` has no SSH signature check from Windows, so it runs a verifier embedded in the script on the archive's `node.exe`, after the checksum matches and Windows reports a valid OpenJS Foundation Authenticode signature.
+
+`tools/npm-package.mjs` builds `getfrost` from `install/npm.mjs` and copies of `update.js` and the compiled modules it imports. The native filesystem bindings load only when called, so these modules import on the user's Node.js 22 or newer, and CI runs the package's tests on Node.js 22.0.0. The package installs the release matching its own version when the application folder has no frost or an older one, then starts the installed `launch.mjs` with the installed runtime. It replaces itself through `process.execve` on POSIX with Node.js 26.1 or newer, and runs a child process otherwise. It relies only on the fixed runtime path, `launch.mjs`, `current.json`'s `version` and `versions/<version>/src/cli/main.js`, so those stay fixed for it too. `release.sh --release` publishes it after the GitHub release, because it downloads that release.
 
 Installer and updater share a persistent OS installation lock. POSIX installation ancestry must belong to root or the current user and exclude unsafe writable parents. The root handle is retained and its identity checked after probes and before activation. Windows refuses links and checks root identity; default profile ACLs provide the permission boundary.
 

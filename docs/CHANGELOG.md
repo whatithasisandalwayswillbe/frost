@@ -75,3 +75,7 @@ Notable changes to frost, newest release first. Each release lists what was adde
 - **`frost config edit` saves only after you check the changes.** It opens a copy of `config.toml`, lists the settings you changed, and saves the copy as written, comments and all, once you type `yes`. A file that doesn't parse goes back to the editor instead of breaking scheduled backups, and a `config.toml` that's already broken can still be opened and fixed.
 
 - **frost installs with one line.** `install/install.sh` detects macOS, Linux, WSL or Git Bash, checks signed checksums, and installs the complete package with a launcher. It requires `ssh-keygen` from OpenSSH 8.1 or newer and refuses an unverified package.
+
+- **Windows installs from PowerShell.** `irm https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.ps1 | iex` checks the release the same way, using the release's own OpenJS-signed runtime, so it needs nothing else installed. It puts `frost` in `%LocalAppData%\frost\bin` and adds that folder to your `PATH`.
+
+- **npm and pnpm can install frost.** `npm install -g getfrost` or `pnpm add -g getfrost` gives you a `frost` command that installs the signed release on its first run and then runs it. frost keeps updating itself, and the package needs Node.js 22 or newer.

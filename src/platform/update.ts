@@ -1,4 +1,4 @@
-// Self-update. latest() finds the newest GitHub release and checks its signed checksums, and
+// Self-update. latest() finds the newest GitHub release and release() checks its signed checksums, and
 // installRelease() downloads, verifies, stages and activates it under the installation lock.
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, open, readFile, rename, rm, lstat, realpath, readdir } from 'node:fs/promises';
@@ -179,8 +179,7 @@ export async function download(url: string, limit: number, options: UpdateOption
 }
 
 // GitHub's /releases/latest redirects to /releases/tag/<tag>, so the tag comes from the Location
-// header. checksums.txt must carry a valid release signature before its sum for this platform's
-// archive is trusted.
+// header. release() then checks that tag's signed checksums.
 export async function latest(options: UpdateOptions = {}): Promise<Release> {
   const base = options.baseURL ?? baseURL;
   const response = await request(base + '/latest', options, true);
@@ -193,7 +192,14 @@ export async function latest(options: UpdateOptions = {}): Promise<Release> {
   const tag = new URL(location, base).pathname.split('/releases/tag/')[1];
   if (!tag) throw errNoRelease;
   if (!valid(tag)) throw new Error(`the latest release has an odd tag ${JSON.stringify(tag)}`);
+  return release(tag, options);
+}
 
+// Finds this platform's archive in one release. checksums.txt must carry a valid release signature
+// before its sum for the archive is trusted.
+export async function release(tag: string, options: UpdateOptions = {}): Promise<Release> {
+  if (!valid(tag)) throw new Error(`${JSON.stringify(tag)} isn't a release version`);
+  const base = options.baseURL ?? baseURL;
   const assetBase = base + '/download/' + encodeURIComponent(tag) + '/';
   const sums = await download(assetBase + 'checksums.txt', 65536, options);
   const sig = await download(assetBase + 'checksums.txt.sig', 65536, options);
@@ -205,12 +211,12 @@ export async function latest(options: UpdateOptions = {}): Promise<Release> {
 
   // Record a private copy, so installRelease only takes releases from here and ignores any later
   // change to the returned object.
-  const release = { version: tag, archive, page: base + '/tag/' + encodeURIComponent(tag), sum };
-  verified.set(release, { ...release, sum: Buffer.from(sum) });
-  return release;
+  const checked = { version: tag, archive, page: base + '/tag/' + encodeURIComponent(tag), sum };
+  verified.set(checked, { ...checked, sum: Buffer.from(sum) });
+  return checked;
 }
 
-// Releases latest() checked, mapped to the copy installRelease uses.
+// Releases that release() checked, mapped to the copy installRelease uses.
 const verified = new WeakMap<Release, Release>();
 
 // Names the package manager that owns a path, or '' when it isn't managed. Those installs must
@@ -442,7 +448,7 @@ async function matchesVersion(dir: string, entries: ArchiveEntry[], prefix: stri
   return (await walk(dir)) && expected.size === 0;
 }
 
-// Installs a release from latest() into root while holding the installation lock.
+// Installs a release from latest() or release() into root while holding the installation lock.
 export async function installRelease(
   rel: Release,
   root = installationRoot(),

@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   latest,
+  release,
   installRelease,
   download,
   loadState,
@@ -167,6 +168,20 @@ test('signed release installs staged scripts and runtime, then commits current v
 
   // Installing the same release again is harmless.
   await installRelease(rel, f.root, f.options);
+});
+
+// release() checks one named release the way latest() checks the newest, and installRelease takes
+// what it returns. A tag without a build for this platform, or one that isn't a version, is refused.
+test('a named release is checked like the latest one', async t => {
+  const f = await fixture(t);
+  const rel = await release(f.version, f.options);
+  assert.equal(rel.archive, 'frost_1.2.3_linux_amd64.tar.gz');
+  await installRelease(rel, f.root, f.options);
+  assert.equal(JSON.parse(await readFile(path.join(f.root, 'current.json'), 'utf8')).version, f.version);
+
+  await assert.rejects(release('v9.9.9', f.options), /v9\.9\.9 has no build for linux\/amd64/);
+  await assert.rejects(release('latest', f.options), /isn't a release version/);
+  await assert.rejects(release(f.version, { ...f.options, trustedKey: signingKey().authorized }), /isn't signed/);
 });
 
 // A version folder already on disk, as if an earlier update stopped before its commit, is reused

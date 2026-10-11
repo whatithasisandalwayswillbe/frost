@@ -4,15 +4,30 @@ frost has eight commands. Every one takes `--config-dir <dir>` to use a differen
 
 ## Installation
 
-Releases include the Node.js runtime, scripts and assets. You don't need Node.js or npm on the machine you back up.
+Releases include the Node.js runtime, scripts and assets. You don't need Node.js or npm on the machine you back up, unless you install with npm or pnpm.
+
+On macOS and Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.sh | sh
 ```
 
-The installer checks the release signature and archive checksum, installs the application in your user profile, and puts a launcher in a folder on your `PATH`. Signature verification needs `ssh-keygen` from OpenSSH 8.1 or newer. On Windows, run the installer in Git Bash. WSL installs the Linux package.
+On Windows, in PowerShell:
 
-The default launcher folder is `/usr/local/bin` when writable, otherwise `~/.local/bin`; Windows uses `~/bin`. Set `FROST_INSTALL_DIR` to choose another launcher folder, or `FROST_VERSION` to install a specific release. Changing the launcher folder doesn't move the application folder.
+```powershell
+irm https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.ps1 | iex
+```
+
+Both installers check the release signature and archive checksum, install the application in your user profile, and put a `frost` launcher in a folder on your `PATH`.
+
+| Installer | Needs | Default launcher folder |
+|---|---|---|
+| `install.sh` | `curl` or `wget`, and `ssh-keygen` from OpenSSH 8.1 or newer | `/usr/local/bin` when writable, otherwise `~/.local/bin`. Git Bash on Windows uses `~/bin` |
+| `install.ps1` | Windows PowerShell 5.1 or PowerShell 7 | `%LocalAppData%\frost\bin`, which it adds to your user `PATH` |
+
+`install.ps1` checks the signature with the release's own `node.exe`, once Windows confirms the OpenJS Foundation signed it. `install.sh` also runs in Git Bash on Windows, and WSL installs the Linux package.
+
+Set `FROST_INSTALL_DIR` to choose another launcher folder, or `FROST_VERSION` to install a specific release. In PowerShell, set them before running the installer, as in `$env:FROST_VERSION = 'v0.1.0'`. `install.ps1` leaves `PATH` alone for a folder you choose. Changing the launcher folder doesn't move the application folder.
 
 | Platform | Archive architectures | Application folder |
 |---|---|---|
@@ -21,6 +36,17 @@ The default launcher folder is `/usr/local/bin` when writable, otherwise `~/.loc
 | Windows | `amd64`, `arm64` | `%LocalAppData%\frost\app` |
 
 There is no Linux ARMv7 package. The runtime stays in `runtime/bin/node` (`node.exe` on Windows); a small launcher loads the active version. Keep the complete application folder together.
+
+### npm and pnpm
+
+```sh
+npm install -g getfrost
+pnpm add -g getfrost
+```
+
+The `getfrost` package needs Node.js 22 or newer, and has no dependencies or install scripts. Its `frost` command installs frost the first time it runs. It downloads the release matching the package's version, checks its signature and checksum with frost's own updater code, and runs the release's installer into the application folder above. Every later command runs the installed frost, which updates itself as usual, and an older `getfrost` never replaces a newer frost.
+
+The installer's launchers go in `frost/bin` beside the application folder, but the package's `frost` is the one on your `PATH`. Removing the package leaves the application folder in place.
 
 ### Manual installation
 
@@ -217,7 +243,7 @@ Installs the latest frost release in the application folder.
 
 frost checks the release's signed checksums, downloads the package for your platform and checks its SHA-256. It stages the scripts and bundled runtime, tests their versions, then activates the new scripts. The runtime keeps its fixed path, and identical runtime bytes aren't replaced. Config, keys and backups stay in their own folders. [SECURITY.md](SECURITY.md#updates) describes the checks and interruption limits.
 
-It never installs a pre-release, or anything older than what you're running.
+It never installs a pre-release, or anything older than what you're running. frost installed with npm or pnpm updates itself this way too.
 
 It can't update in these cases:
 

@@ -13,6 +13,7 @@ root="$(pwd)"
 key="${FROST_SIGNING_KEY:-$HOME/.ssh/frost-release}"
 pubfile='install/release-signing.pub'
 installer='install/install.sh'
+psinstaller='install/install.ps1'
 appkey='src/platform/signature.ts'
 mode="${1:-}"
 
@@ -21,7 +22,7 @@ has() { command -v "$1" >/dev/null 2>&1; }
 usage() {
   printf '%s\n' \
     'Usage: scripts/release.sh <mode> <version>' \
-    '  --release       build, sign, test and publish a release, such as v0.1.0' \
+    '  --release       build, sign, test and publish a release and its npm package, such as v0.1.0' \
     '  --pre-release   build, sign, test and publish a pre-release, such as v0.2.0-rc.1' \
     '  --dry-run       build and sign locally, publish nothing' \
     '  --setup-key     create or reuse the release signing key' \
@@ -33,7 +34,7 @@ case "$mode" in
   *) usage >&2; exit 2 ;;
 esac
 
-# Keep the three public copies together. Never replace an existing private key.
+# Keep the four public copies together. Never replace an existing private key.
 if [ "$mode" = --setup-key ]; then
   [ "$#" -eq 1 ] || die '--setup-key takes no version'
   has ssh-keygen || die 'ssh-keygen is missing'
@@ -47,19 +48,22 @@ if [ "$mode" = --setup-key ]; then
   [[ "$public" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,2}$ ]] || die 'The release key must be ed25519'
   ssh-keygen -l -f "$key.pub" >/dev/null || die 'The public key is invalid'
   [ "$public" = "$(ssh-keygen -y -f "$key")" ] || die 'The public key does not match the private key'
-  if [ ! -f "$installer" ] || [ ! -f "$appkey" ]; then die 'The installer or application key is missing'; fi
+  if [ ! -f "$installer" ] || [ ! -f "$psinstaller" ] || [ ! -f "$appkey" ]; then die 'An installer or the application key is missing'; fi
   [ "$(awk '/^RELEASE_KEY=/ { n++ } END { print n+0 }' "$installer")" = 1 ] || die 'The installer key declaration is ambiguous'
+  [ "$(awk '/^  [$]ReleaseKey = / { n++ } END { print n+0 }' "$psinstaller")" = 1 ] || die 'The PowerShell installer key declaration is ambiguous'
   [ "$(awk '/^export const releaseKey = / { n++ } END { print n+0 }' "$appkey")" = 1 ] || die 'The application key declaration is ambiguous'
   temporary="$(mktemp -d)"
   trap 'rm -rf "$temporary"' EXIT
   printf '%s\n' "$public" > "$temporary/public"
   awk -v k="$public" '/^RELEASE_KEY=/ { print "RELEASE_KEY=\"" k "\""; next } { print }' "$installer" > "$temporary/installer"
+  awk -v k="$public" '/^  [$]ReleaseKey = / { print "  $ReleaseKey = \047" k "\047"; next } { print }' "$psinstaller" > "$temporary/psinstaller"
   awk -v k="$public" '/^export const releaseKey = / { print "export const releaseKey = \047" k "\047;"; next } { print }' "$appkey" > "$temporary/application"
   cat "$temporary/public" > "$pubfile"
   cat "$temporary/installer" > "$installer"
+  cat "$temporary/psinstaller" > "$psinstaller"
   cat "$temporary/application" > "$appkey"
-  printf 'Public key updated in %s, %s and %s.\n' "$pubfile" "$installer" "$appkey"
-  printf 'Back up %s securely, then commit the three public copies.\n' "$key"
+  printf 'Public key updated in %s, %s, %s and %s.\n' "$pubfile" "$installer" "$psinstaller" "$appkey"
+  printf 'Back up %s securely, then commit the four public copies.\n' "$key"
   exit 0
 fi
 
@@ -80,22 +84,24 @@ notes="$(awk -v v="$version" '$1 == "##" && $2 == v { found=1; print; next } fou
 [ -n "$notes" ] || die 'This version is missing from docs/CHANGELOG.md'
 printf '%s\n' "$notes" | awk '/^[[:space:]]*- / { found=1 } END { exit !found }' || die 'The release notes have no changes'
 
-# Tools, the signing key and its three public copies, and the pinned runtime.
+# Tools, the signing key and its four public copies, and the pinned runtime.
 for tool in node npm git ssh-keygen shellcheck; do has "$tool" || die "Missing $tool"; done
 if [ "$mode" != --dry-run ]; then has gh || die 'Missing gh'; fi
 if [ ! -f "$key" ] || [ ! -f "$key.pub" ]; then die 'Release signing key is missing; run --setup-key'; fi
 public="$(awk 'NR == 1 { print $1, $2 }' "$key.pub")"
 [ "$public" = "$(cat "$pubfile")" ] || die 'Release signing key differs from the pinned key'
 [ "$public" = "$(sed -n 's/^RELEASE_KEY="\(.*\)"$/\1/p' "$installer")" ] || die 'Installer release key differs from the pinned key'
+[ "$public" = "$(sed -n "s/^  [$]ReleaseKey = '\(.*\)'$/\1/p" "$psinstaller")" ] || die 'PowerShell installer release key differs from the pinned key'
 [ "$public" = "$(sed -n "s/^export const releaseKey = '\(.*\)';$/\1/p" "$appkey")" ] || die 'Application release key differs from the pinned key'
 node --input-type=module -e 'import {readFileSync} from "node:fs"; const expected=JSON.parse(readFileSync("tools/runtime-lock.json","utf8")).version; if(process.version!==expected) throw new Error("Use the pinned release runtime "+expected);'
 # Every target the runtime lock pins gets a package.
 targets="$(node tools/targets.mjs)"
 [ -n "$targets" ] || die 'The runtime lock names no targets'
 
-# Publishing needs a signed-in gh, a clean pushed main and an unused version.
+# Publishing needs a signed-in gh, npm for a release, a clean pushed main and an unused version.
 if [ "$mode" != --dry-run ]; then
   gh auth status >/dev/null 2>&1 || die 'Sign in with gh auth login before publishing'
+  if [ "$mode" = --release ]; then npm whoami >/dev/null 2>&1 || die 'Sign in with npm login before publishing'; fi
   ! gh release view "$version" --repo "$repo" >/dev/null 2>&1 || die 'This release already exists'
   [ -z "$(git status --porcelain)" ] || die 'The working tree must be clean'
   [ "$(git branch --show-current)" = main ] || die 'Releases must come from main'
@@ -136,6 +142,9 @@ printf 'frost-release %s\n' "$public" > "$signers"
 ssh-keygen -Y verify -f "$signers" -I frost-release -n file -s "$out/checksums.txt.sig" < "$out/checksums.txt"
 printf '%s\n' "$notes" > "$out/release-notes.md"
 
+# The getfrost npm package installs this release on first use. Pre-releases don't get one.
+if [ "$mode" != --pre-release ]; then node tools/npm-package.mjs --version "$version" --out "$out/npm"; fi
+
 if [ "$mode" = --dry-run ]; then
   printf 'Files are in %s. Nothing was published.\n' "$out"
   exit 0
@@ -146,3 +155,8 @@ flags=()
 [ "$mode" != --pre-release ] || flags+=(--prerelease)
 gh release create "$version" --repo "$repo" --target "$(git rev-parse HEAD)" --title "frost $version" \
   --notes-file "$out/release-notes.md" "${flags[@]}" "$out"/frost_* "$out/checksums.txt" "$out/checksums.txt.sig"
+
+# Publish getfrost once its release exists, since it downloads that release. npm asks for a one-time code.
+if [ "$mode" = --release ]; then
+  npm publish "$out/npm" --access public || die "The release is published, but npm publish failed. Retry with: npm publish $out/npm --access public"
+fi

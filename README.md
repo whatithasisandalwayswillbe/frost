@@ -31,9 +31,25 @@ frost backs up your folders to S3-compatible storage or [Permafrost](docs/PERMAF
 curl -fsSL https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.sh | sh
 ```
 
-#### Manually
+On Windows, in PowerShell:
 
-See [Installation](docs/CLI.md#installation) for manual installation, platform targets and file locations. Keep the complete extracted package together.
+```powershell
+irm https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.ps1 | iex
+```
+
+<details>
+<summary>Other ways to install</summary>
+
+With npm or pnpm, on Node.js 22 or newer. The first `frost` command downloads and installs the signed release:
+
+```sh
+npm install -g getfrost
+pnpm add -g getfrost
+```
+
+To install by hand, see [Installation](docs/CLI.md#installation), which also lists platform targets and file locations.
+
+</details>
 
 ## Get started
 

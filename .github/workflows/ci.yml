@@ -42,6 +42,15 @@ jobs:
           bash -n scripts/release.sh
       - name: Check shell scripts
         run: shellcheck install/install.sh scripts/release.sh
+      # The installer only prints with Write-Host, which is what a script run through iex should do.
+      - name: Check the PowerShell installer
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | Format-List; exit 1 }
+          $findings = Invoke-ScriptAnalyzer -Path install/install.ps1 -Severity Warning, Error -ExcludeRule PSAvoidUsingWriteHost
+          if ($findings) { $findings | Format-List; exit 1 }
 
   packages:
     runs-on: ubuntu-latest
@@ -61,3 +70,21 @@ jobs:
           done
       - name: Smoke-test the Linux package
         run: node tools/smoke.mjs .work/packages/frost_0.0.0-ci_linux_amd64.tar.gz
+
+  # The getfrost npm package runs on the user's Node.js, so its tests also run on the oldest one it supports,
+  # nodeFloor in tools/npm-package.mjs. frost itself builds with the pinned runtime first.
+  npm-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 26.10.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.0.0
+      - run: node --test dist/test/platform/npm.test.js

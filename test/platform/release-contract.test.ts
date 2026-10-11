@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { run } from '../../src/platform/command.js';
 import { repo, valid, archiveName, supportedRuntime } from '../../src/platform/update.js';
@@ -14,8 +14,8 @@ const project = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (file: string) => readFile(path.join(project, file), 'utf8');
 const lock = async () => JSON.parse(await read('tools/runtime-lock.json')) as { version: string; artifacts: object };
 
-// update.ts owns the release version pattern. The installer, its shell script, the launcher and the release script
-// check versions without importing it.
+// update.ts owns the release version pattern. The installer, its shell and PowerShell scripts, the launcher and the
+// release script check versions without importing it.
 test('every copy of the release version pattern matches the updater', async () => {
   const pattern = '^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$';
   const expression = new RegExp(pattern);
@@ -35,6 +35,7 @@ test('every copy of the release version pattern matches the updater', async () =
   for (const file of [
     'src/platform/update.ts',
     'install/install.sh',
+    'install/install.ps1',
     'install/install.mjs',
     'install/launch.mjs',
     'scripts/release.sh',
@@ -42,14 +43,17 @@ test('every copy of the release version pattern matches the updater', async () =
     assert.ok((await read(file)).includes(pattern), file);
 });
 
-test('the repository and archive names agree across the script, installer and updater', async () => {
+test('the repository and archive names agree across the script, installers and updater', async () => {
   const installer = await read('install/install.sh');
+  const powershell = await read('install/install.ps1');
   const release = await read('scripts/release.sh');
   assert.equal(/^REPO="([^"]+)"$/m.exec(installer)?.[1], repo);
+  assert.equal(/^ {2}\$Repo = '([^']+)'$/m.exec(powershell)?.[1], repo);
   assert.equal(/^repo='([^']+)'$/m.exec(release)?.[1], repo);
 
   assert.ok(installer.includes('archive="frost_${num}_${os}_${arch}.${ext}"'));
   assert.ok(installer.includes('ext=tar.gz') && installer.includes('ext=zip'));
+  assert.ok(powershell.includes('$archive = "frost_${num}_windows_${arch}.zip"'));
   assert.equal(archiveName('v1.2.3', 'linux', 'amd64'), 'frost_1.2.3_linux_amd64.tar.gz');
   assert.equal(archiveName('v1.2.3', 'windows', 'arm64'), 'frost_1.2.3_windows_arm64.zip');
   assert.ok(release.includes('"$out"/frost_*'));
@@ -57,7 +61,14 @@ test('the repository and archive names agree across the script, installer and up
 
 // The install line, badges and issue links name the repository by hand, so a move must update every one of them.
 test('every repository link in the docs and installer names the updater repository', async () => {
-  for (const file of ['README.md', 'docs/CLI.md', 'docs/CONTRIBUTING.md', 'install/install.sh']) {
+  for (const file of [
+    'README.md',
+    'docs/CLI.md',
+    'docs/CONTRIBUTING.md',
+    'install/install.sh',
+    'install/install.ps1',
+    'tools/npm-package.mjs',
+  ]) {
     const owners = [...(await read(file)).matchAll(/github[^\s"'()]*?\/([\w.-]+)\/frost\b/g)].map(m => m[1]);
     assert.ok(owners.length > 0, file);
     for (const owner of owners) assert.equal(owner + '/frost', repo, file);
@@ -95,8 +106,13 @@ test('the pinned runtime is the one the project, CI and the docs name', async ()
   assert.equal(npmLock.packages[''].engines.node, engines);
   assert.equal(npmLock.packages[''].version, manifest.version);
 
+  // The one exception is the job that tests the getfrost npm package on the oldest Node.js it supports.
+  const { nodeFloor } = await import(pathToFileURL(path.join(project, 'tools/npm-package.mjs')).href);
   const versions = [...(await read('.github/workflows/ci.yml')).matchAll(/node-version: (\S+)/g)].map(m => m[1]);
   assert.ok(versions.length > 0);
-  for (const pinned of versions) assert.equal(pinned, bare);
+  assert.deepEqual(
+    versions.filter(v => v !== bare),
+    [`${nodeFloor}.0.0`],
+  );
   assert.ok((await read('README.md')).includes(`Node.js ${bare}`));
 });
