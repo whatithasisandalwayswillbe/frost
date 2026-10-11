@@ -250,7 +250,6 @@ It can't update in these cases:
 | When | Do instead |
 |---|---|
 | frost was built from source | Rebuild it with `npm run build`, or use the installer |
-| Homebrew, Nix, Snap, Scoop or a system package installed it | Update it with that |
 | You can't write to its application folder | Reinstall with the installer as your own user |
 
 ### Automatic updates
