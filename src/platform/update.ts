@@ -223,11 +223,8 @@ const verified = new WeakMap<Release, Release>();
 // update through their package manager.
 export function managed(exe: string): string {
   const p = exe.replaceAll('\\', '/');
-  const lower = p.toLowerCase();
-  if (p.includes('/Cellar/') || p.startsWith('/home/linuxbrew/')) return 'Homebrew';
   if (p.startsWith('/nix/store/')) return 'Nix';
   if (p.startsWith('/snap/')) return 'Snap';
-  if (lower.includes('/scoop/apps/')) return 'Scoop';
   if (p.startsWith('/usr/bin/') || p.startsWith('/bin/')) return "your system's package manager";
   return '';
 }
