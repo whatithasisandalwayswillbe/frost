@@ -14,18 +14,17 @@ import { execute } from '../../src/cli/index.js';
 import { type Hooks } from '../../src/cli/context.js';
 import { Format, statusLine, cellWidth, tildify, humanBytes, when } from '../../src/cli/format.js';
 import { phraseGrid } from '../../src/cli/key.js';
-import { probe } from '../../src/cli/connect.js';
+import { probe, explainConnect } from '../../src/cli/connect.js';
 import { openScheduledLog, accessHint } from '../../src/cli/backup.js';
 import { updateStatePath } from '../../src/cli/update.js';
 import { knownPath, loadKnown } from '../../src/cli/known.js';
 import { rerunCommand } from '../../src/cli/restore.js';
-import { setupClosed, trackedCheckout } from '../../src/cli/tui.js';
 import { Key } from '../../src/core/crypto.js';
 import { Repo, chunkKey } from '../../src/core/repo.js';
 import * as config from '../../src/core/config.js';
 import * as update from '../../src/platform/update.js';
 import { Memory } from '../support.js';
-import { errConditionalUnsupported } from '../../src/core/storage.js';
+import { APIError, errConditionalUnsupported } from '../../src/core/storage.js';
 import type { TestContext } from 'node:test';
 
 // Joins lines and ends with a newline, the way the CLI prints them.
@@ -318,6 +317,84 @@ test(
     assert.deepEqual(differences, []);
   },
 );
+// Without a key, plain init opens the key page for the default server and takes the key the user pastes.
+test('plain init opens the key page for a new Permafrost key and takes the pasted key', async t => {
+  const f = await fixture(t);
+  const opened: string[] = [];
+  f.hooks.openBrowser = async url => {
+    opened.push(url);
+  };
+  const words = f.key.phrase().split(' ');
+  const out = await f.must(['init'], lines('1', '2', 'pasted-key', f.src, '*.tmp', 'n', '', words[2], words[17]));
+  assert.deepEqual(opened, ['https://getfro.st/perma']);
+  assert.match(out, /Get one at getfro\.st\/perma, then paste it below\./);
+  assert.equal((await config.loadFile()).storage.permafrost.token, 'pasted-key');
+});
+
+// Setup shows Permafrost's own reason for refusing a key or an upload, and keeps its general advice when
+// the server didn't give one.
+test('setup errors carry the Permafrost server reason', () => {
+  const said = (status: number, code: string, detail = '') =>
+    explainConnect(new APIError(status, code, detail || 'error', detail)).message;
+  assert.equal(
+    said(401, 'unauthorized', 'this access key was replaced by a newer one'),
+    "Permafrost didn't accept that access key. This access key was replaced by a newer one.",
+  );
+  assert.match(said(401, 'unauthorized'), /Check you copied all of it/);
+  assert.equal(
+    said(403, 'read_only', 'uploads are paused until the account is active again'),
+    "Permafrost won't store backups with that access key. Uploads are paused until the account is active again.",
+  );
+  assert.equal(
+    said(507, 'quota_exceeded', 'this upload would go over 100 GB'),
+    'your Permafrost storage is full: this upload would go over 100 GB',
+  );
+  assert.equal(said(507, 'quota_exceeded'), 'your Permafrost storage is full');
+});
+
+// A rejected Permafrost key stops commands with the server's reason first, then the general advice.
+test('a rejected key shows the Permafrost server reason', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  const refuse = async () => {
+    throw new APIError(401, 'unauthorized', 'replaced', 'a newer key replaced this one on 11 October 2026');
+  };
+  Object.assign(f.mem, { get: refuse, put: refuse, putNew: refuse, list: refuse });
+  const backup = await f.invoke(['backup']);
+  assert.equal(backup.code, 1);
+  assert.match(
+    backup.stderr + backup.stdout,
+    /the Permafrost access key was rejected: a newer key replaced this one on 11 October 2026\. Run `frost init`/,
+  );
+});
+
+// Storage that reports its use gets a status row. When the storage has something to say, such as an account
+// that's nearly full, status and backup both show it as a warning. A failed usage request shows nothing.
+test('status shows storage use, and status and backup show the storage warning', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  const usage = { used: 82_400_000_000, quota: 100_000_000_000, readOnly: false, message: '' };
+  Object.assign(f.mem, { usage: async () => usage });
+
+  const quiet = await f.must(['status']);
+  assert.match(quiet, /storage\s+82\.4 GB of 100\.0 GB used/);
+  const backup = await f.must(['backup']);
+  assert.ok(!/storage/.test(backup.replace(/backup\s+\S+/, '')), backup);
+
+  usage.used = 92_000_000_000;
+  usage.message = 'your storage is 92% full';
+  const warned = await f.must(['status']);
+  assert.match(warned, /▲\s+storage\s+Your storage is 92% full\.\n.*92\.0 GB of 100\.0 GB used/);
+  assert.match(await f.must(['backup']), /▲\s+storage\s+Your storage is 92% full\./);
+
+  Object.assign(f.mem, {
+    usage: async () => {
+      throw new Error('usage is unavailable');
+    },
+  });
+  assert.ok(!(await f.must(['status'])).includes('GB used'));
+});
+
 test('init, dry run, backup, unchanged check, status, restore, settings, phrase verification and confirmation end to end', async t => {
   const f = await fixture(t);
   const init = await f.must(['init'], f.answers);
@@ -880,34 +957,6 @@ test('an interrupted restore keeps its config and cache directories in the comma
   const folders = await readdir(target);
   assert.equal(folders.length, 1);
   assert.equal(await readFile(path.join(target, folders[0], path.basename(f.src), 'todo.txt'), 'utf8'), 'buy milk');
-});
-
-// A checkout saves its key before setup ends, so closing setup afterwards says so. A failed checkout
-// leaves the message as it was.
-test('closing setup after a checkout says the access key was saved', async () => {
-  let saved = false;
-  const ok = trackedCheckout(
-    async () => ({ page: 'page', wait: async () => 'key' }),
-    () => (saved = true),
-  );
-  const started = await ok(undefined);
-  assert.equal(saved, false);
-  assert.equal(await started.wait(), 'key');
-  assert.equal(saved, true);
-  assert.equal(setupClosed(saved), 'Setup closed. Your Permafrost access key was saved.');
-
-  let failedSaved = false;
-  const failing = trackedCheckout(
-    async () => ({
-      page: 'page',
-      wait: async () => {
-        throw new Error('checkout was cancelled in the browser');
-      },
-    }),
-    () => (failedSaved = true),
-  );
-  await assert.rejects((await failing(undefined)).wait(), /cancelled/);
-  assert.equal(setupClosed(failedSaved), 'Setup closed. Nothing was changed.');
 });
 
 // macOS asks a scheduled run about the bundled runtime, and a run started in a terminal about the terminal app.

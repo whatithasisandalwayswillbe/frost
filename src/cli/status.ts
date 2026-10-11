@@ -7,7 +7,7 @@ import { Engine, goneText } from '../engine/index.js';
 import * as update from '../platform/update.js';
 import { Context } from './context.js';
 import { ago, Block, humanBytes, humanCount, inTime, plural, printable, when } from './format.js';
-import { missingList } from './backup.js';
+import { missingList, readUsage, usageNotice } from './backup.js';
 import { loadKnown, moveHint, StorageError } from './known.js';
 import { updateSummary, updateStatePath } from './update.js';
 
@@ -173,6 +173,14 @@ export async function runStatus(ctx: Context, verify: boolean, all: boolean): Pr
         'protected',
         `${humanCount(snaps[0].stats.files)} files, ${humanBytes(snaps[0].stats.bytes)}, in ${plural(snaps.length, 'snapshot')}`,
       );
+
+    // Storage that reports its use gets a row, which leads with the storage's warning when it has one.
+    const used = await readUsage(e.repo.backend, ctx.signal);
+    if (used) {
+      const amount = humanBytes(used.used) + (used.quota ? ' of ' + humanBytes(used.quota) : '') + ' used';
+      if (used.message) b.warnRow('storage', f.caution(usageNotice(used)) + '\n' + f.dim(amount));
+      else b.row('storage', amount);
+    }
 
     // `missing` counts snapshots the manifest knew about that storage no longer has.
     if (missing)

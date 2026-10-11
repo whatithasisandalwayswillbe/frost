@@ -2,6 +2,7 @@
 // schedule and the recovery phrase, then hands everything to SetupDeps.finish to save.
 
 import { addPath as coreAddPath } from '../core/config.js';
+import { permafrostKeyPage } from '../core/storage.js';
 import type { Config, Storage, Key } from './types.js';
 import { Form, problem, inputBox, type KeyEvent } from './input.js';
 import { providers, matchProvider, describeStorage, projectLink } from './providers.js';
@@ -66,8 +67,8 @@ export interface SetupDeps {
   dirExists?(p: string): boolean;
   // Says where this machine's existing backups are, when that's somewhere other than s.
   elsewhere?(s: Storage): string;
-  // Starts a Permafrost checkout in the browser. page is its address, and wait resolves to the access key.
-  checkout(s: Storage, signal?: AbortSignal): Promise<{ page: string; wait: () => Promise<string> }>;
+  // Opens a web page in the browser, like the page where people get a Permafrost key.
+  openBrowser?(url: string): void;
   // Cleans up a typed folder path and returns the indexes of listed folders inside it.
   addPath?(
     typed: string,
@@ -85,7 +86,6 @@ type SetupStep =
   | 'welcome'
   | 'storage'
   | 'permaChoice'
-  | 'checkout'
   | 'details'
   | 'folders'
   | 'skip'
@@ -100,7 +100,7 @@ type SetupStep =
 const stepNames = ['', 'storage', 'folders', 'schedule', 'recovery phrase', 'review'];
 
 function stepOf(s: SetupStep): number {
-  if (['storage', 'permaChoice', 'checkout', 'details'].includes(s)) return 1;
+  if (['storage', 'permaChoice', 'details'].includes(s)) return 1;
   if (['folders', 'skip'].includes(s)) return 2;
   if (s === 'schedule') return 3;
   if (['phrase', 'check', 'unlock'].includes(s)) return 4;
@@ -219,10 +219,6 @@ export class SetupModel {
   autoTried = false;
   permaCur = 0;
 
-  // co tracks the browser checkout for a new Permafrost key. Its id changes whenever a checkout starts
-  // or stops, so an old one can tell it's been replaced. until only drives the countdown.
-  co = { id: 0, page: '', until: 0, waiting: false, failed: '', controller: undefined as AbortController | undefined };
-
   // In the folders and skip lists, a selection of -1 means the input box has focus.
   folderIn = new Form([{ placeholder: 'type a path, like ~/Pictures' }]);
   folderSel = -1;
@@ -268,12 +264,11 @@ export class SetupModel {
   }
 
   animation(): 'spinner' | undefined {
-    return this.busy || (this.step === 'checkout' && this.co.waiting) ? 'spinner' : undefined;
+    return this.busy ? 'spinner' : undefined;
   }
 
-  // Cancels a checkout and anything else still using the wizard's signal.
+  // Cancels anything still using the wizard's signal.
   close(): void {
-    this.stopCheckout();
     this.controller.abort();
   }
 
@@ -382,12 +377,12 @@ export class SetupModel {
       this.busy = '';
       await this.advance();
     } catch (e) {
-      // Open the form for these settings unless it's already showing. The Permafrost form sits
-      // behind permaChoice in the history, so esc goes back there.
+      // Open the form for these settings unless it's already showing. The default server's Permafrost
+      // form sits behind permaChoice in the history, so esc goes back there.
       if (this.step !== 'details') {
         const p = matchProvider(this.pending);
         this.openDetails(p);
-        if (p === 0) {
+        if (p === 0 && !this.pending.permafrost.url) {
           this.back.push(this.step);
           this.step = 'permaChoice';
         }
@@ -418,7 +413,6 @@ export class SetupModel {
     const e = typeof event === 'string' ? { key: event } : event;
     const key = e.key;
     if (key === 'ctrl+c') {
-      this.stopCheckout();
       this.exited = true;
       return;
     }
@@ -436,7 +430,6 @@ export class SetupModel {
 
     if (this.quit) {
       if (key === 'y') {
-        this.stopCheckout();
         this.exited = true;
       } else if (key === 'n' || key === 'esc') this.quit = false;
       return;
@@ -462,7 +455,8 @@ export class SetupModel {
         if (['up', 'k'].includes(key)) this.provCur = Math.max(this.provCur - 1, 0);
         else if (['down', 'j'].includes(key)) this.provCur = Math.min(this.provCur + 1, providers.length - 1);
         else if (key === 'enter') {
-          if (!this.provCur) {
+          // A custom Permafrost server hands out keys its own way, so it goes straight to the key.
+          if (!this.provCur && !this.cfg.storage.permafrost.url) {
             this.permaCur = 0;
             this.goTo('permaChoice');
           } else {
@@ -478,22 +472,10 @@ export class SetupModel {
         else if (['down', 'j', '2'].includes(key)) this.permaCur = 1;
         else if (key === 'esc') this.goBack();
         else if (key === 'enter') {
-          if (this.permaCur) {
-            this.goTo('checkout');
-            this.startCheckout();
-          } else {
-            this.openDetails(0);
-            this.goTo('details');
-          }
-        }
-        break;
-
-      case 'checkout':
-        if (key === 'p') this.pasteKey('');
-        else if (key === 'r' && !this.co.waiting) this.startCheckout();
-        else if (key === 'esc') {
-          this.stopCheckout();
-          this.goBack();
+          // Without a key, the key page opens in the browser and the key is pasted here.
+          if (this.permaCur) this.deps.openBrowser?.(permafrostKeyPage);
+          this.openDetails(0);
+          this.goTo('details');
         }
         break;
 
@@ -715,82 +697,6 @@ export class SetupModel {
     this.details = new Form(fields);
   }
 
-  // Cancels the running checkout. Changing id makes it ignore anything that arrives later.
-  stopCheckout(): void {
-    this.co.controller?.abort();
-    this.co.id++;
-    this.co.waiting = false;
-    this.co.controller = undefined;
-  }
-
-  // Runs a browser checkout in the background. When it returns an access key, setup fills it in
-  // and connects. Closing the wizard cancels it through the wizard's signal.
-  startCheckout(): void {
-    this.stopCheckout();
-    const id = this.co.id + 1;
-    const controller = new AbortController();
-    this.co = { id, controller, waiting: true, until: Date.now() + 25 * 60000, page: '', failed: '' };
-    if (this.signal?.aborted) controller.abort();
-    const abort = () => controller.abort();
-    this.signal?.addEventListener('abort', abort, { once: true });
-
-    void (async () => {
-      try {
-        const result = await this.deps.checkout(this.cfg.storage, controller.signal);
-        if (!result.wait) throw new Error("checkout didn't start");
-        const waiting = result.wait();
-
-        // If this checkout was replaced or cancelled while it started, wait out its result quietly so a
-        // failure isn't left unhandled.
-        if (id !== this.co.id || controller.signal.aborted) {
-          await waiting.catch(() => {});
-          return;
-        }
-        this.co.page = result.page;
-        this.onChange?.();
-
-        const token = await waiting;
-        if (id !== this.co.id || !this.co.waiting) return;
-        this.co.waiting = false;
-        if (!token) {
-          this.co.failed = "checkout didn't return an access key";
-          return;
-        }
-        this.pasteKey(token);
-        const st = structuredClone(this.cfg.storage);
-        providers[0].apply([token], st);
-        await this.connect(st);
-      } catch (e) {
-        if (id === this.co.id) {
-          this.co.waiting = false;
-          const token = (e as { token?: unknown } | undefined)?.token;
-          if (!controller.signal.aborted && typeof token === 'string' && token) {
-            // Checkout received a key but couldn't save it immediately. Keep it covered in the form
-            // so finishing setup can save it, as the plain setup prompts do.
-            this.pasteKey(token);
-            this.note = message(e);
-          } else this.co.failed = controller.signal.aborted ? '' : message(e);
-        }
-      } finally {
-        controller.abort();
-        this.signal?.removeEventListener('abort', abort);
-        this.onChange?.();
-      }
-    })();
-  }
-
-  // Leaves checkout for the Permafrost key field, filled with token. History is cut back to
-  // permaChoice, so esc returns there with "I don't have a key yet" still selected.
-  pasteKey(token: string): void {
-    this.stopCheckout();
-    this.openDetails(0);
-    this.details.fields[0].value = token;
-    const i = this.back.lastIndexOf('permaChoice');
-    if (i >= 0) this.back.length = i + 1;
-    this.step = 'details';
-    this.permaCur = 1;
-  }
-
   schedValue(): string {
     return this.cfg.schedule.enabled ? this.cfg.schedule.every || 'daily' : 'off';
   }
@@ -831,11 +737,6 @@ export class SetupModel {
       case 'schedule':
       case 'permaChoice':
         hints = [h('enter', 'next'), h('↑↓', 'choose'), h('esc', 'back'), quit];
-        break;
-      case 'checkout':
-        hints = this.co.waiting
-          ? [h('p', 'paste a key instead'), h('esc', 'cancel'), quit]
-          : [h('r', 'try again'), h('p', 'paste a key'), h('esc', 'back'), quit];
         break;
       case 'details':
         hints = [h('enter', this.details.focus === this.details.fields.length - 1 ? 'connect' : 'next')];
@@ -958,8 +859,17 @@ export class SetupModel {
           question: f.question ?? '',
           body: [inputBox(f, d.reveal, true, cw)],
           help: f.help,
-          ...(this.prov === 0
-            ? { extra: [style('text', 'No key yet? Press ') + style('bold', '[esc]') + style('text', ' to get one.')] }
+          // The default server's key field says where keys come from. A custom server has its own way.
+          ...(this.prov === 0 && !this.cfg.storage.permafrost.url
+            ? {
+                extra: [
+                  this.permaCur
+                    ? style('text', 'Get one at ') +
+                      style('bold', permafrostKeyPage.replace('https://', '')) +
+                      style('text', ', then paste it here.')
+                    : style('text', 'No key yet? Press ') + style('bold', '[esc]') + style('text', ' to get one.'),
+                ],
+              }
             : {}),
         };
       }
@@ -974,9 +884,6 @@ export class SetupModel {
             choice(this.permaCur === 1, "I don't have a key yet", 'get one in your browser', 26, cw),
           ],
         };
-
-      case 'checkout':
-        return this.checkoutPage(cw);
 
       // Show as many list rows as fit, from 6 down to 1.
       case 'folders':
@@ -1320,44 +1227,6 @@ export class SetupModel {
         row(stack(...list)),
       ),
     );
-  }
-
-  // Shows a spinner and the time left while checkout runs. Once it stops, it shows why, with [r] to
-  // retry and [p] to paste a key.
-  checkoutPage(cw: number): Page {
-    if (!this.co.waiting) {
-      return {
-        over: 'Permafrost',
-        question: "Checkout didn't finish.",
-        body: [
-          blank(cw),
-          pad(
-            style('bold', '[r]') +
-              style('text', ' try again') +
-              fill(5) +
-              style('bold', '[p]') +
-              style('text', ' paste a key instead'),
-            cw,
-          ),
-        ],
-        feedback: para('caution', sentence(this.co.failed || 'checkout stopped'), cw),
-        feedbackFirst: true,
-      };
-    }
-
-    const status =
-      style('bold', ['|', '/', '-', '\\'][this.spin % 4]) +
-      style('text', this.co.page ? ' Waiting for checkout' : ' Opening your browser');
-    const left = Math.max(Math.round((this.co.until - Date.now()) / 1000), 0);
-    const clock = style('dim', `${Math.trunc(left / 60)}:${String(left % 60).padStart(2, '0')} left`);
-    const iw = cw - 4;
-    return {
-      over: 'Permafrost',
-      question: 'Get your access key in your browser.',
-      sub: 'Grab one there.',
-      body: [box(pad(status + fill(Math.max(iw - width(status) - width(clock), 1)) + clock, iw), true, { w: cw - 2 })],
-      help: this.co.page ? "Browser didn't open? Go to " + this.co.page + ', then press [p] to paste your key.' : '',
-    };
   }
 }
 

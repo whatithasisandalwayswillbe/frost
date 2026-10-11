@@ -188,11 +188,14 @@ export async function run(argv: string[], ctx = new Context()): Promise<void> {
   }
 }
 
-// Replaces a rejected Permafrost key, even one buried in an error's causes, with advice on fixing it.
+// Replaces a rejected Permafrost key, even one buried in an error's causes, with advice on fixing it. The
+// server's own reason comes first when it gave one.
 function plainError(err: unknown): unknown {
   if (err instanceof APIError && err.status === 401)
     return new Error(
-      'the Permafrost access key was rejected, it may be wrong or expired. Run `frost init` and set up storage again to get a working one',
+      'the Permafrost access key was rejected' +
+        (err.detail ? ': ' + err.detail + '.' : ', it may be wrong or expired.') +
+        ' Run `frost init` and set up storage again to get a working one',
     );
   if ((err as Error)?.cause) {
     const mapped = plainError((err as Error).cause);

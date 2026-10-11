@@ -15,7 +15,9 @@ export const errConditionalUnsupported = new Error(
 );
 // The largest sealed object: 256 MiB of plaintext plus room for the seal.
 const maxObjectSize = (256 << 20) + 64;
-const defaultPermafrostURL = 'https://permafrost.example.com';
+export const defaultPermafrostURL = 'https://permafrost.wihiaawb.com';
+// Where people get a key for the default server. Setup opens it, and the key is pasted back in.
+export const permafrostKeyPage = 'https://getfro.st/perma';
 
 export function newBackend(storage: Storage): Backend {
   if (storage.backend === 's3') return new S3Backend(storage.s3);
@@ -35,10 +37,21 @@ export interface Backend {
   getOwned?(key: string, signal?: AbortSignal): Promise<Buffer>;
   list(prefix: string, signal?: AbortSignal): Promise<string[]>;
   delete(key: string, signal?: AbortSignal): Promise<void>;
+  // How much the account stores and may store, for storage that reports it.
+  usage?(signal?: AbortSignal): Promise<Usage>;
   toString(): string;
   // Identifies the complete destination. Backup only trusts the manifest's chunk list at the
   // location where it was checked.
   location?(): string;
+}
+
+// An account's storage use. quota is 0 when there's no limit. message is the server's own text for the
+// person, such as a warning that the account is nearly full, or empty.
+export interface Usage {
+  used: number;
+  quota: number;
+  readOnly: boolean;
+  message: string;
 }
 
 export function location(backend: Backend): string {
@@ -60,7 +73,7 @@ export function validObjectKey(key: string): boolean {
   );
 }
 
-// Permafrost servers and checkout pages may use plain http only on these hosts.
+// Permafrost servers may use plain http only on these hosts.
 export function isLoopback(host: string): boolean {
   host = host.replace(/^\[|\]$/g, '');
   return (
@@ -137,17 +150,20 @@ const sleep = async (ms: number, signal?: AbortSignal) => {
   await delay(ms, undefined, { signal });
 };
 
-// An error response from Permafrost. 401 gets a message of its own, since it means the access
-// key was refused.
+// An error response from Permafrost. detail is the server's own message, when it sent one. 401 gets a
+// message of its own, since it means the access key was refused.
 export class APIError extends Error {
   constructor(
     public status: number,
     public code: string,
     message: string,
+    public detail = '',
   ) {
     super(
       status === 401
-        ? "permafrost didn't accept the access key, it may be wrong or expired (run `frost init` to set it up again)"
+        ? "permafrost didn't accept the access key" +
+            (detail ? ': ' + detail : ', it may be wrong or expired') +
+            ' (run `frost init` to set it up again)'
         : `permafrost: ${message} (${status} ${code})`,
     );
   }
@@ -219,16 +235,17 @@ export class PermafrostBackend implements Backend {
 
         // Use the JSON error body when there is one.
         let code = 'unknown';
-        let message = http.STATUS_CODES[response.status] ?? 'unknown';
+        let detail = '';
         try {
           const decoded = JSON.parse(response.body.toString());
           if (typeof decoded.error?.code === 'string') code = decoded.error.code;
-          if (typeof decoded.error?.message === 'string') message = decoded.error.message;
+          if (typeof decoded.error?.message === 'string') detail = decoded.error.message.slice(0, 1000);
         } catch {
           /* Keep the HTTP error when the body isn't JSON. */
         }
 
-        const error = new APIError(response.status, code, message);
+        const message = detail || (http.STATUS_CODES[response.status] ?? 'unknown');
+        const error = new APIError(response.status, code, message, detail);
         if (!(response.status === 429 || (response.status >= 500 && response.status !== 507))) throw error;
         last = error;
         const retry = response.headers['retry-after'];
@@ -342,6 +359,23 @@ export class PermafrostBackend implements Backend {
       seen.add(cursor);
     } while (cursor);
     return result;
+  }
+
+  // Reads /v1/usage. Sizes must be whole byte counts.
+  async usage(signal?: AbortSignal): Promise<Usage> {
+    const url = new URL(this.#base.toString().replace(/\/$/, '') + '/v1/usage');
+    const response = await this.#do('GET', url, undefined, {}, signal);
+    const body = JSON.parse(response.body.toString()) as Record<string, unknown>;
+    const count = (value: unknown) => (Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : -1);
+    const used = count(body.used_bytes);
+    const quota = count(body.quota_bytes);
+    if (used < 0 || quota < 0) throw new Error('permafrost usage: invalid sizes');
+    return {
+      used,
+      quota,
+      readOnly: body.read_only === true,
+      message: typeof body.message === 'string' ? body.message.slice(0, 1000) : '',
+    };
   }
 }
 

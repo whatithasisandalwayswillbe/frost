@@ -55,7 +55,7 @@ In a terminal, `frost init` opens a full-screen setup that asks one thing at a t
 
 Setup connects right after the storage step and checks it can read, list, write and delete a test object, including [conditional writes](#storage-compatibility). If that fails, it goes back to the answer that caused it and keeps the rest. If the key on this machine doesn't open the backups already in that storage, it asks for their recovery phrase. If this machine's backups are somewhere else and the new storage is empty, it asks before starting a separate set of backups there.
 
-Picking Permafrost asks whether you have an access key. If you don't, frost opens a page in your browser to get one. The key comes back to frost and is saved to `config.toml` straight away, so quitting setup doesn't lose it. If that doesn't work, you can try again or paste the key yourself. [PERMAFROST.md](PERMAFROST.md#getting-a-key) explains the handoff.
+Picking Permafrost asks whether you have an access key. If you don't, frost opens [getfro.st/perma](https://getfro.st/perma) in your browser, and you paste the key it gives you. With a custom Permafrost server, setup only asks for the key.
 
 Saving writes `config.toml` and the key file and installs the scheduled job. Run `frost init` again any time to review or change your settings.
 
@@ -63,7 +63,7 @@ The full-screen setup doesn't ask for a Permafrost server or a folder inside an 
 
 With piped input, `init` asks plain questions, one per line. It offers a generic S3 option instead of the provider presets and asks for the folder inside the bucket. Getting a Permafrost key works there too.
 
-If Permafrost rejects your access key, commands that access your backups stop with an error that says so. Run `frost init` again to set up a working one.
+If Permafrost rejects your access key or refuses an upload, commands that access your backups stop with an error that gives Permafrost's reason. Run `frost init` again to set up a working key.
 
 ### Storage compatibility
 
@@ -94,6 +94,8 @@ A change is a file or folder added or removed, or a file whose contents, size, p
 | `--no-verify` | Skip the spot check after the backup |
 
 After a backup that saves a snapshot, frost downloads `verify.sample` random chunks and checks them. When nothing changed, it only checks if the last check is more than a day old or found a problem, and shows the last result otherwise. If any check fails, `backup` exits with `1`.
+
+With Permafrost, `backup` ends with a `storage` warning when the server has something to say about the account, such as storage that's nearly full.
 
 ### What's backed up
 
@@ -176,7 +178,7 @@ The new run carries on in the same folder. Files already there are checked and s
 
 ## `frost status`
 
-Shows the version, the storage and key fingerprint, the last backup and whether it worked, when the next one is due, the latest verification result, how updates are set up, and the 10 most recent snapshots.
+Shows the version, the storage and key fingerprint, the last backup and whether it worked, when the next one is due, the latest verification result, how updates are set up, and the 10 most recent snapshots. With Permafrost, a `storage` row shows how much the account uses of its limit, and leads with the server's warning when it has one.
 
 When there are more than 10, a line below the list shows how many older snapshots aren't shown, like `+90` for 100 snapshots.
 
@@ -260,7 +262,7 @@ Changing `schedule.enabled` or `schedule.every`, with `set` or `edit`, updates t
 | `storage.s3.access_key_id` | | |
 | `storage.s3.secret_access_key` | | |
 | `storage.s3.insecure` | `false` | Use plain HTTP when the endpoint has no scheme. Only for local testing |
-| `storage.permafrost.url` | | Blank for the default server. Otherwise an `https://` URL (`http://` only for localhost) |
+| `storage.permafrost.url` | | Blank for the default server, `https://permafrost.wihiaawb.com`. Otherwise an `https://` URL (`http://` only for localhost) |
 | `storage.permafrost.token` | | |
 
 ### Moving your backups

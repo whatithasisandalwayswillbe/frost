@@ -100,7 +100,6 @@ function setupDeps(overrides: Partial<SetupDeps> = {}): SetupDeps {
     unlock: async () => key,
     finish: async () => [],
     pickWords: () => [2, 17],
-    checkout: async () => ({ page: 'page', wait: async () => 'good' }),
     ...overrides,
   };
 }
@@ -598,80 +597,43 @@ test('setup cannot skip viewing the phrase and paging keeps it covered', async (
   assert.equal(m.keyReady, true);
 });
 
-test('setup checkout cleanup ignores old results, empty results, and missing listeners', async () => {
-  // Checkout waits until the test calls complete.
-  let signal: AbortSignal | undefined, complete!: (s: string) => void;
-  const m = new SetupModel(
-    setupDeps({
-      checkout: async (_s, s) => {
-        signal = s;
-        return { page: 'page', wait: () => new Promise(resolve => (complete = resolve)) };
-      },
-    }),
-    defaultConfig(),
-  );
-  m.step = 'checkout';
-  m.startCheckout();
-  await turn();
+// Without a key, setup opens the key page in the browser and waits on the key field for the paste. With a
+// key, nothing opens.
+test('setup opens the key page for a new Permafrost key and asks for it', async () => {
+  const opened: string[] = [];
+  const m = new SetupModel(setupDeps({ openBrowser: url => opened.push(url) }), defaultConfig());
+  m.resize(80, 24);
+  await m.onKey('enter');
+  await m.onKey('enter');
+  assert.equal(m.step, 'permaChoice');
+  await m.onKey('down');
+  await m.onKey('enter');
+  assert.deepEqual(opened, ['https://getfro.st/perma']);
+  assert.equal(m.step, 'details');
+  assert.match(strip(m.view()), /Get one at getfro\.st\/perma, then paste it here\./);
 
-  // Pasting a key by hand cancels checkout, and its late result can't replace the pasted key.
-  m.pasteKey('manual');
-  assert.equal(signal!.aborted, true);
-  complete('stale');
-  await turn();
-  assert.equal(m.details.values()[0], 'manual');
-
-  // An empty key and a checkout with no wait function both fail with a message.
-  m.step = 'checkout';
-  m.deps.checkout = async () => ({ page: 'page', wait: async () => '' });
-  m.startCheckout();
-  await turn();
-  assert.equal(m.co.waiting, false);
-  assert.equal(m.co.failed, "checkout didn't return an access key");
-  m.deps.checkout = async () => ({ page: 'page' }) as any;
-  m.startCheckout();
-  await turn();
-  assert.equal(m.co.failed, "checkout didn't start");
-
-  m.close();
-  assert.equal(m.signal!.aborted, true);
+  await m.onKey('esc');
+  assert.equal(m.step, 'permaChoice');
+  await m.onKey('up');
+  await m.onKey('enter');
+  assert.equal(opened.length, 1);
+  assert.match(strip(m.view()), /No key yet\? Press \[esc\] to get one\./);
 });
 
-test('setup retains a received checkout key when saving it fails and ignores a stale failed save', async () => {
-  const received = 'received-secret-key';
-  const failure = Object.assign(new Error("got your access key but couldn't save it yet"), { token: received });
-  const m = new SetupModel(
-    setupDeps({
-      checkout: async () => ({
-        page: 'page',
-        wait: async () => {
-          throw failure;
-        },
-      }),
-    }),
-    defaultConfig(),
-  );
+// A custom Permafrost server hands out keys its own way, so setup goes straight to the key field.
+test('setup asks a custom Permafrost server for its key without the key page', async () => {
+  const opened: string[] = [];
+  const cfg = defaultConfig();
+  cfg.storage.permafrost.url = 'https://permafrost.example.org';
+  const m = new SetupModel(setupDeps({ openBrowser: url => opened.push(url) }), cfg);
   m.resize(80, 24);
-  m.step = 'checkout';
-  m.startCheckout();
-  await turn();
-  assert.equal(m.step, 'details');
-  assert.equal(m.details.values()[0], received);
-  assert.match(m.note, /couldn't save/);
-  assert.ok(!strip(m.view()).includes(received));
   await m.onKey('enter');
-  assert.equal(m.cfg.storage.permafrost.token, received);
-
-  let fail!: (error: Error) => void;
-  m.deps.checkout = async () => ({ page: 'page', wait: () => new Promise((_, reject) => (fail = reject)) });
-  m.step = 'checkout';
-  m.startCheckout();
-  await turn();
-  m.pasteKey('manual-key');
-  fail(failure);
-  await turn();
-  assert.equal(m.details.values()[0], 'manual-key');
-  m.close();
+  await m.onKey('enter');
+  assert.equal(m.step, 'details');
+  assert.deepEqual(opened, []);
+  assert.ok(!/getfro\.st|No key yet/.test(strip(m.view())));
+  await m.onKey('esc');
+  assert.equal(m.step, 'storage');
 });
 
 test('setup quit confirmation is separate from typing and changes are saved only by s', async () => {

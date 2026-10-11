@@ -10,7 +10,9 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 - **frost can store backups on Permafrost.** Connecting takes one access key, with no bucket, region or endpoint to set up. You can also point frost at your own Permafrost server.
 
-- **`frost init` can get you a Permafrost key.** If you don't have one yet, it opens a page in your browser, and the key comes back to frost and is saved straight away. If Permafrost rejects a key later, commands that access backups say so and point you to `frost init`.
+- **`frost init` points you to a Permafrost key.** If you don't have one yet, it opens getfro.st/perma in your browser, and you paste the key it gives you. If Permafrost rejects a key or an upload later, commands that access backups give its reason and point you to `frost init`.
+
+- **`frost status` shows how much Permafrost storage you use.** A `storage` row shows the account's use and limit. `status` and `backup` warn when Permafrost says the account needs attention, such as when it's nearly full.
 
 - **`frost init` walks you through setup.** In a terminal it opens a full-screen setup that asks one thing at a time and says where to find each answer, with presets for Amazon S3 and Cloudflare R2 and unverified presets for Backblaze B2 and Wasabi. If connecting fails, it says why in plain words and goes back to the answer that caused it.
 

@@ -1,5 +1,5 @@
 // Tests for the storage clients against small reference servers on loopback: bounded reads,
-// the Permafrost and S3 backends, SigV4 signing and the Permafrost checkout callback.
+// the Permafrost and S3 backends and SigV4 signing.
 // Keep the Permafrost server here in step with docs/PERMAFROST.md.
 
 import test, { type TestContext } from 'node:test';
@@ -19,7 +19,6 @@ import {
   type Backend,
   type S3Config,
 } from '../../src/core/storage.js';
-import { startCheckout, errCheckoutCancelled, errCheckoutTimeout } from '../../src/core/checkout.js';
 
 // Starts an HTTP server on a random loopback port and returns its base URL. Handler errors become
 // 500 responses, and the server closes when the test ends.
@@ -133,9 +132,17 @@ test('Permafrost reference server contract, retries and paginated conformance', 
   const objects = new Map<string, Buffer>();
   let failNext = 0;
   let requests = 0;
+  let readOnly = false;
+  const quota = 1000;
+  const used = () => [...objects.values()].reduce((sum, data) => sum + data.length, 0);
+  const refuse = (res: ServerResponse, status: number, code: string, message: string) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { code, message } }));
+  };
 
   // Answers 503 while failNext is positive, checks the bearer token and the upload checksum, honours
-  // If-None-Match for conditional creation and pages listings two keys at a time.
+  // If-None-Match for conditional creation, enforces a 1000-byte quota and read-only mode, reports
+  // usage and pages listings two keys at a time.
   const endpoint = await server(t, async (req, res) => {
     requests++;
     if (failNext > 0) {
@@ -151,6 +158,11 @@ test('Permafrost reference server contract, retries and paginated conformance', 
     }
 
     const url = new URL(req.url!, 'http://localhost');
+    if (url.pathname === '/v1/usage') {
+      const message = readOnly ? 'uploads are paused' : used() >= quota * 0.9 ? 'storage is 90% full' : '';
+      res.end(JSON.stringify({ used_bytes: used(), quota_bytes: quota, read_only: readOnly, message }));
+      return;
+    }
     if (url.pathname === '/v1/objects') {
       const keys = [...objects.keys()].filter(key => key.startsWith(url.searchParams.get('prefix') ?? '')).sort();
       const start = Number(url.searchParams.get('cursor') ?? 0);
@@ -172,6 +184,9 @@ test('Permafrost reference server contract, retries and paginated conformance', 
         res.end();
         return;
       }
+      if (readOnly) return refuse(res, 403, 'read_only', 'uploads are paused');
+      if (used() - (objects.get(key)?.length ?? 0) + data.length > quota)
+        return refuse(res, 507, 'quota_exceeded', 'this upload would go over 1000 bytes');
       objects.set(key, data);
       res.writeHead(204);
       res.end();
@@ -208,13 +223,47 @@ test('Permafrost reference server contract, retries and paginated conformance', 
   );
   assert.equal(requests - failed, 4);
 
-  // A bad token fails at once without retries. The location includes a token hash, so the two differ.
+  // A bad token fails at once without retries, with the server's reason. The location includes a token
+  // hash, so the two differ.
   failNext = 0;
   const bad = new PermafrostBackend(endpoint, 'bad');
   const count = requests;
-  await assert.rejects(bad.get('a'), error => error instanceof APIError && error.unauthorized);
+  await assert.rejects(
+    bad.get('a'),
+    error => error instanceof APIError && error.unauthorized && /accept the access key: bad token/.test(error.message),
+  );
   assert.equal(requests - count, 1);
   assert.notEqual(bad.location(), backend.location());
+
+  // Usage reports sizes and the server's message. A full account and a read-only one refuse uploads at
+  // once, with the server's reason.
+  for (const key of await backend.list('')) await backend.delete(key);
+  assert.deepEqual(await backend.usage(), { used: 0, quota: 1000, readOnly: false, message: '' });
+  await backend.put('big', Buffer.alloc(950));
+  assert.deepEqual(await backend.usage(), { used: 950, quota: 1000, readOnly: false, message: 'storage is 90% full' });
+  const full = requests;
+  await assert.rejects(
+    backend.put('more', Buffer.alloc(100)),
+    error =>
+      error instanceof APIError && error.status === 507 && error.detail === 'this upload would go over 1000 bytes',
+  );
+  assert.equal(requests - full, 1);
+  readOnly = true;
+  await assert.rejects(
+    backend.put('small', Buffer.from('x')),
+    error => error instanceof APIError && error.code === 'read_only' && /uploads are paused/.test(error.message),
+  );
+  assert.equal((await backend.usage()).readOnly, true);
+  assert.deepEqual(await backend.get('big'), Buffer.alloc(950));
+});
+
+test('Permafrost usage rejects sizes that are not whole byte counts', async t => {
+  for (const body of ['{"used_bytes":-1,"quota_bytes":0}', '{"used_bytes":1.5,"quota_bytes":0}', '{"quota_bytes":0}']) {
+    const endpoint = await server(t, (_req, res) => {
+      res.end(body);
+    });
+    await assert.rejects(new PermafrostBackend(endpoint, 'tok').usage(), /invalid sizes/);
+  }
 });
 
 test('Permafrost refuses redirects, remote HTTP, URL credentials, cursor cycles and checksum damage', async t => {
@@ -379,47 +428,4 @@ test('S3 download limits and unsupported conditional creation fail closed', asyn
   await assert.rejects(new S3Backend(config(large)).get('chunks/aa/test'), /size limit/);
   for (const endpoint of ['https://user:pass@example.com', 'https://example.com/path', 'https://example.com?a=1'])
     assert.throws(() => new S3Backend(config(endpoint)));
-});
-
-// The checkout page sends the token back to a loopback callback. Only a request carrying the
-// matching state is accepted, and the callback server closes after it.
-test('checkout ignores stray and wrong-state callbacks and accepts one valid token', async t => {
-  const checkout = await startCheckout('https://frost.test/checkout.html?ref=cli');
-  t.after(() => checkout.close());
-  const page = new URL(checkout.url);
-  const back = page.searchParams.get('redirect_uri')!;
-  const state = page.searchParams.get('state')!;
-  assert.equal(page.searchParams.get('ref'), 'cli');
-  assert.ok(state.length >= 40);
-
-  assert.equal((await fetch(back)).status, 400);
-  assert.equal((await fetch(back + '?state=other&token=evil')).status, 400);
-
-  const response = await fetch(back, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ state, token: 'pf_good' }),
-  });
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('Cache-Control'), 'no-store');
-  await response.text();
-  assert.equal(await checkout.wait(), 'pf_good');
-  await assert.rejects(fetch(back));
-});
-
-test('checkout cancellation, timeout, malformed tokens and unsafe page URLs', async t => {
-  const cancelled = await startCheckout('https://frost.test/checkout');
-  t.after(() => cancelled.close());
-  const page = new URL(cancelled.url);
-  const back = page.searchParams.get('redirect_uri')!;
-  const state = page.searchParams.get('state')!;
-  await (await fetch(back + '?' + new URLSearchParams({ state, error: 'cancelled' }))).text();
-  await assert.rejects(cancelled.wait(), error => error === errCheckoutCancelled);
-
-  const timeout = await startCheckout('https://frost.test/checkout');
-  t.after(() => timeout.close());
-  await assert.rejects(timeout.wait(undefined, 10), error => error === errCheckoutTimeout);
-
-  for (const url of ['http://example.com/checkout', 'file://example.com/key', 'https://user:pass@example.com/checkout'])
-    await assert.rejects(startCheckout(url));
 });

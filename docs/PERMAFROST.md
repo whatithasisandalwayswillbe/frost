@@ -1,6 +1,6 @@
 # Permafrost
 
-Permafrost is a hosted storage service for frost. It's a plain object store with four operations. Backup objects are encrypted before upload, the same as with S3. Setup also writes and deletes a small plaintext connectivity probe.
+Permafrost is a hosted storage service for frost. It's a plain object store with four object operations and a usage report. Backup objects are encrypted before upload, the same as with S3. Setup also writes and deletes a small plaintext connectivity probe.
 
 This document is the contract. `PermafrostBackend` in `src/core/storage.ts` implements it. Its tests in `test/core/storage.test.ts` run against a loopback reference server built from this document. Anyone can run a compatible server.
 
@@ -10,7 +10,7 @@ Version: `v1`
 
 | | |
 |---|---|
-| Base URL | `storage.permafrost.url`, or the default server when that's blank |
+| Base URL | `storage.permafrost.url`, or the default server `https://permafrost.wihiaawb.com` when that's blank |
 | Auth | `Authorization: Bearer <token>` on every request |
 | Transport | HTTPS. Clients refuse plain `http://` except for loopback hosts like `localhost` and `127.0.0.1` |
 | Object bodies | Raw bytes, `Content-Type: application/octet-stream` |
@@ -38,7 +38,9 @@ Stores the request body under `key`, replacing any existing object.
 | `X-Content-SHA256` | yes | Lowercase hex SHA-256 of the body. The server rejects the upload with `400 checksum_mismatch` if it doesn't match |
 | `If-None-Match` | no | When `*`, create the object atomically only if the key is absent. Otherwise return `412 already_exists` without changing the existing object |
 
-Responses: `204` stored, `400`, `401`, `403`, `412 already_exists`, `413` object too large, `507` account storage full.
+Responses: `204` stored, `400`, `401`, `403 read_only`, `412 already_exists`, `413` object too large, `507 quota_exceeded`.
+
+A server with a storage limit refuses an upload that would take the account past it, with `507 quota_exceeded`. Replacing an object counts only the difference in size. A read-only account refuses uploads with `403 read_only` but still serves downloads, listings and deletes.
 
 frost uses conditional writes for `frost.repo`, snapshot headers and trees, so they're required. Servers must enforce them atomically, including for requests from different clients. A conditional request must never overwrite an existing object.
 
@@ -75,29 +77,35 @@ Cursor values must not repeat within a listing. frost rejects cursor cycles.
 
 Responses: `200`.
 
+### `GET /v1/usage`
+
+Reports how much the account stores and may store.
+
+```json
+{
+  "used_bytes": 41200000000,
+  "quota_bytes": 50000000000,
+  "read_only": false,
+  "message": ""
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `used_bytes` | Total size of the account's objects |
+| `quota_bytes` | The most the account may store, or `0` when there's no limit |
+| `read_only` | `true` when uploads are refused with `403 read_only` |
+| `message` | Text for the person when something needs their attention, such as an account that's nearly full or can't take uploads. Empty otherwise |
+
+frost shows `used_bytes` and `quota_bytes` in `frost status`. When `message` isn't empty, `frost status` and `frost backup` show it as a warning, as it is. Like the error messages below, it starts lowercase and has no closing full stop.
+
+Responses: `200`. A server without this endpoint answers `404`, and frost shows nothing.
+
 ## Getting a key
 
-`frost init` can get an access key in the browser, the same way desktop apps sign in.
+Each server hands out keys its own way. frost only needs the key.
 
-1. frost listens on `127.0.0.1` on a free port and opens the checkout page with two parameters added:
-
-   | Parameter | Meaning |
-   |---|---|
-   | `redirect_uri` | `http://127.0.0.1:{port}/callback` |
-   | `state` | A random value, 32 bytes, base64url |
-
-   For the default server, the page is on the frost website. For a custom server, it's `{base}/checkout`. It's a web page for a person, not part of the API, so it isn't under `/v1` and doesn't take a token.
-
-2. Once the person has a key, the page sends the browser to `redirect_uri` with `state` and `token`, as a query string (`GET`) or a form (`POST`, `application/x-www-form-urlencoded`). A POST keeps the key out of the browser's history. If they cancel, the page sends `state` and `error=cancelled` instead.
-
-3. frost ignores requests to other paths and callbacks without a `state`. A callback with the wrong `state` gets an error page, and frost keeps waiting for the right one. Once the right `state` arrives, frost saves `token` as the access key and stops listening. It waits 25 minutes at most.
-
-The page must:
-
-- Only send the key to a `redirect_uri` on `127.0.0.1` or `localhost`. Anything else would let a crafted link send someone's key to another site.
-- Show the key once it's issued, with or without a `redirect_uri`. The redirect can't reach frost when the browser is on another machine or frost has stopped waiting, and people who come straight from the website have no frost waiting at all.
-
-Because frost checks that the redirect carries the `state` it generated, another page can't feed it a key of its own. Callback bodies are limited to 16 KiB, and only this machine can receive the redirect.
+For the default server, people get a key at [getfro.st/perma](https://getfro.st/perma), copy it and paste it into `frost init`. When the default server is chosen and there's no key yet, setup opens that page in the browser. With a custom server, setup just asks for the key.
 
 ## Errors
 
@@ -111,13 +119,16 @@ Every non-2xx response has this body:
 |---|---|---|
 | 400 | `invalid_key` | The key breaks the rules above |
 | 400 | `checksum_mismatch` | The body doesn't match `X-Content-SHA256` |
-| 401 | `unauthorized` | Missing or invalid token |
+| 401 | `unauthorized` | Missing or invalid token. `message` says why, for example that a newer key replaced it |
 | 403 | `forbidden` | The token is valid but not allowed to do this |
+| 403 | `read_only` | The account can't take uploads right now. `message` says why and until when downloads keep working |
 | 404 | `not_found` | No object with that key |
 | 413 | `too_large` | The body is over the size limit |
 | 429 | `rate_limited` | Slow down, and see `Retry-After` |
 | 500, 502, 503, 504 | `unavailable` | Try again, after `Retry-After` if it's set |
-| 507 | `quota_exceeded` | The account is full |
+| 507 | `quota_exceeded` | The upload would take the account past its limit. `message` gives the numbers |
+
+frost shows `message` with the error, so write it for the person reading it.
 
 ## Retries
 

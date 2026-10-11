@@ -8,6 +8,7 @@ import { Repo, errWrongKey, errNotInitialized } from '../core/repo.js';
 import { APIError, errConditionalUnsupported, errExists, type Backend } from '../core/storage.js';
 import type { Storage } from '../core/config.js';
 import { RepoState, ConnectError } from '../tui/setup.js';
+import { sentence } from '../tui/render.js';
 import { Context } from './context.js';
 
 // Turns a typed recovery phrase into a key, with a specific message for each way it can be wrong.
@@ -34,18 +35,17 @@ export function explainConnect(error: unknown): Error {
       "This storage doesn't support conditional writes (If-None-Match: *). frost needs them to keep two machines from overwriting backup metadata. Choose storage that supports them.",
     );
 
+  // Permafrost's own message says why it refused, when it sent one.
   if (err instanceof APIError) {
+    const why = err.detail ? ' ' + sentence(err.detail) : '';
     if (err.status === 401)
       return new ConnectError(
         'key',
-        "Permafrost didn't accept that access key. Check you copied all of it, or it may have expired.",
+        "Permafrost didn't accept that access key." + (why || ' Check you copied all of it, or it may have expired.'),
       );
     if (err.status === 403)
-      return new ConnectError(
-        'key',
-        "That access key can't store backups. Check its permissions in your Permafrost account.",
-      );
-    if (err.status === 507) return new Error('your Permafrost storage is full');
+      return new ConnectError('key', "Permafrost won't store backups with that access key." + why);
+    if (err.status === 507) return new Error('your Permafrost storage is full' + (err.detail ? ': ' + err.detail : ''));
   }
 
   // Each S3 error code points at the setup answer that's most likely wrong.

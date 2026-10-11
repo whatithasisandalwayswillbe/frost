@@ -13,7 +13,7 @@ import { reference, setupInput } from './references.js';
 // A fixed key, so phrase and fingerprint screens render the same every run.
 const key = { phrase: () => Array(24).fill('abandon').join(' '), fingerprint: () => 'abcd1234abcd' };
 
-// Setup dependencies with no real storage. Only the Permafrost access key 'good' connects, and checkout returns it.
+// Setup dependencies with no real storage. Only the Permafrost access key 'good' connects.
 function deps(): SetupDeps {
   return {
     connect: async s => {
@@ -26,7 +26,7 @@ function deps(): SetupDeps {
     finish: async () => [['config', '~/.config/frost/config.toml']],
     pickWords: () => [2, 17],
     dirExists: () => false,
-    checkout: async () => ({ page: 'getfro.st/perma', wait: async () => 'good' }),
+    openBrowser: () => {},
   };
 }
 
@@ -179,13 +179,13 @@ for (const [w, h] of [
     assert.equal(m.saved, true);
   });
 
-// Captures the screens off the main path: unlocking an existing repository, choosing B2 and Permafrost checkout.
+// Captures the screens off the main path: unlocking an existing repository, choosing B2 and getting a Permafrost key.
 for (const [w, h] of [
   [120, 40],
   [80, 24],
   [56, 18],
 ])
-  test(`setup matches captured existing-key and checkout frames at ${w}x${h}`, async () => {
+  test(`setup matches captured existing-key and key page frames at ${w}x${h}`, async () => {
     const suffix = String(w).padStart(3, '0');
     const name = (s: string) => 'setup-' + s + '-' + suffix;
 
@@ -208,34 +208,14 @@ for (const [w, h] of [
     await b2.onKey('enter');
     same(b2.view(), name('23-b2'));
 
-    const checkout = new SetupModel(deps(), defaultConfig());
-    checkout.resize(w, h);
-    await checkout.onKey('enter');
-    await checkout.onKey('enter');
-    await checkout.onKey('down');
-    same(checkout.view(), name('24-permafrost-no-key'));
+    const perma = new SetupModel(deps(), defaultConfig());
+    perma.resize(w, h);
+    await perma.onKey('enter');
+    await perma.onKey('enter');
+    await perma.onKey('down');
+    same(perma.view(), name('24-permafrost-no-key'));
 
-    // Freeze the clock so the 25 minute checkout countdown renders the captured time.
-    checkout.goTo('checkout');
-    const oldNow = Date.now;
-    Date.now = () => 1000000;
-    try {
-      checkout.co = {
-        id: 1,
-        page: '',
-        until: Date.now() + 25 * 60000,
-        waiting: true,
-        failed: '',
-        controller: undefined,
-      };
-      same(checkout.view(), name('27-checkout-opening'));
-      checkout.co.page = 'getfro.st/perma';
-      checkout.co.waiting = false;
-      checkout.co.failed = "checkout didn't start";
-      same(checkout.view(), name('28-checkout-waiting'));
-      checkout.co.failed = 'nothing came back from checkout within 25 minutes, so frost stopped waiting';
-      same(checkout.view(), name('29-checkout-failed'));
-    } finally {
-      Date.now = oldNow;
-    }
+    // Without a key, the key field says where to get one.
+    await perma.onKey('enter');
+    same(perma.view(), name('25-permafrost-get-key'));
   });

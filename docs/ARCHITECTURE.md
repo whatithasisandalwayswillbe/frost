@@ -163,7 +163,7 @@ Files are flushed before activation. POSIX also flushes staged directories from 
 
 ## TUI
 
-`src/tui/` holds the browser, setup state machines, renderer and hidden game. Async commands carry cancellation and attempt identity, so stale picker, checkout and game results are ignored. Closing the program cancels outstanding work and restores terminal state.
+`src/tui/` holds the browser, setup state machines, renderer and hidden game. Async commands carry cancellation and attempt identity, so stale picker and game results are ignored. Closing the program cancels outstanding work and restores terminal state.
 
 The browser indexes subtree counts and sizes once per tree, caches date headings and reuses downloaded headers on refresh. It reads manifest state up front, then releases the lock so a scheduled backup can run while the browser is open.
 

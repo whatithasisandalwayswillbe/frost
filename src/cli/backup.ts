@@ -6,6 +6,7 @@ import { lstat } from 'node:fs/promises';
 import { existing, openRoot, sameFile, type RootFile } from '../platform/fs-root.js';
 import * as config from '../core/config.js';
 import { shorten, shortOf, compare } from '../core/snapshot.js';
+import type { Backend, Usage } from '../core/storage.js';
 import { changesNone, type BackupResult, type Changes, type Progress } from '../engine/index.js';
 import { code, message } from '../engine/types.js';
 import { Context } from './context.js';
@@ -24,6 +25,7 @@ import {
   truncateLeft,
   nativePath,
 } from './format.js';
+import { sentence } from '../tui/render.js';
 import { StorageError, rememberFailure } from './known.js';
 import { autoUpdate } from './update.js';
 
@@ -56,6 +58,20 @@ function someOf(items: string[], total: number): string {
     (total > Math.min(items.length, 10) ? '\n  ... and ' + (total - Math.min(items.length, 10)) + ' more' : '')
   );
 }
+
+// Reads how much the storage holds, when it reports that. A failure only means there's nothing to show.
+export async function readUsage(backend: Backend, signal?: AbortSignal): Promise<Usage | undefined> {
+  if (!backend.usage) return undefined;
+  try {
+    return await backend.usage(signal);
+  } catch {
+    signal?.throwIfAborted();
+    return undefined;
+  }
+}
+
+// The storage's own warning, such as an account that's nearly full, as a sentence.
+export const usageNotice = (u: Usage) => printable(sentence(u.message));
 
 export const missingList = (paths: string[]) => paths.map(p => printable(tildify(nativePath(p)))).join(', ');
 
@@ -369,6 +385,10 @@ export async function runBackup(ctx: Context, flags: BackupFlags): Promise<void>
           }
         }
       }
+
+      // Storage that reports its use can warn that it's nearly full.
+      const used = await readUsage(e.repo.backend, ctx.signal);
+      if (used?.message) b.warnRow('storage', ctx.fmt.caution(usageNotice(used)));
 
       b.gap();
       b.close(

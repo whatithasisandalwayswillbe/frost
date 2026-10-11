@@ -208,15 +208,6 @@ function demoSetupDeps(latency: number): SetupDeps {
         return false;
       }
     },
-
-    // The fake checkout waits at least four seconds, then hands back the demo key.
-    checkout: async (_storage, signal) => ({
-      page: 'getfro.st/perma',
-      wait: async () => {
-        await delay(Math.max(latency, 4000), undefined, { signal });
-        return 'demo';
-      },
-    }),
   };
 }
 

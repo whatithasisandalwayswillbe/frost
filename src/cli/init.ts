@@ -5,7 +5,7 @@ import { statSync } from 'node:fs';
 import * as config from '../core/config.js';
 import { Key } from '../core/crypto.js';
 import { Repo } from '../core/repo.js';
-import { location, type Backend } from '../core/storage.js';
+import { location, permafrostKeyPage, type Backend } from '../core/storage.js';
 import { RepoState } from '../tui/setup.js';
 import { patternRegex } from '../engine/exclude.js';
 import { Context, errNoKey } from './context.js';
@@ -13,7 +13,6 @@ import { connect, explainConnect, opensRepo, phraseKey } from './connect.js';
 import { Prompter } from './prompt.js';
 import { phraseGrid } from './key.js';
 import { loadKnown } from './known.js';
-import { checkout } from './checkout.js';
 import { tildify } from './format.js';
 
 // The closing line after a successful setup.
@@ -73,8 +72,8 @@ function missingDirs(paths: string[]): string[] {
   });
 }
 
-// Asks where backups go and fills in that storage's settings. Without a Permafrost key, the user can get
-// one in the browser.
+// Asks where backups go and fills in that storage's settings. Without a key for the default Permafrost
+// server, it opens the key page so the user can get one and paste it.
 async function askStorage(ctx: Context, p: Prompter, cfg: config.Config): Promise<void> {
   const f = ctx.fmt;
   const options = [
@@ -93,32 +92,17 @@ async function askStorage(ctx: Context, p: Prompter, cfg: config.Config): Promis
     s.backend = 'permafrost';
     if (
       !s.permafrost.token &&
+      !s.permafrost.url &&
       (await p.choose('  Do you have a Permafrost access key?', ['I have a key', "I don't have a key yet"], 0)) === 1
     ) {
-      try {
-        const co = await checkout(ctx, s);
-        p.line('  Grab one in your browser.');
-        p.line('  ' + f.dim("If it didn't open, go to") + ' ' + f.bold(co.page) + f.dim(', then paste the key below.'));
-        p.question('  ' + f.dim('Waiting ...'));
-
-        // A key that came back but couldn't be saved yet is still used. It's saved with the rest at the end.
-        let token = '';
-        try {
-          token = await co.wait();
-          f.write(f.good('got your access key') + '\n');
-        } catch (err) {
-          token = (err as { token?: string }).token ?? '';
-          f.write(token ? f.good('got your access key') + '\n' : f.error('stopped') + '\n');
-          p.warn(f.caution((err as Error).message));
-        }
-        if (token) {
-          s.permafrost.token = token;
-          return;
-        }
-        p.line(f.dim('  Paste your access key, or press ctrl+c and run frost init again to retry.'));
-      } catch (err) {
-        p.warn(f.caution((err as Error).message));
-      }
+      await ctx.hooks.openBrowser(permafrostKeyPage).catch(() => {});
+      p.line(
+        '  ' +
+          f.dim('Get one at') +
+          ' ' +
+          f.bold(permafrostKeyPage.replace('https://', '')) +
+          f.dim(', then paste it below.'),
+      );
     }
     s.permafrost.token = await p.secret('  Access key', s.permafrost.token);
   } else {

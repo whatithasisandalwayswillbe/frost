@@ -11,7 +11,6 @@ import { setup } from '../tui/setup.js';
 import { loadState } from '../platform/update.js';
 import { Context } from './context.js';
 import { connect, unlock } from './connect.js';
-import { checkout } from './checkout.js';
 import { finishSetup, setUp } from './init.js';
 import { loadKnown } from './known.js';
 import { updateStatePath, updateSummary } from './update.js';
@@ -57,34 +56,9 @@ export async function runBrowser(ctx: Context): Promise<void> {
   }
 }
 
-// Wraps setup's checkout step. A key that comes back is already in config.toml, so `saved` records it
-// for the message shown if setup is then closed.
-export function trackedCheckout<S>(
-  start: (s: S, signal?: AbortSignal) => Promise<{ page: string; wait: () => Promise<string> }>,
-  saved: () => void,
-): (s: S, signal?: AbortSignal) => Promise<{ page: string; wait: () => Promise<string> }> {
-  return async (s, signal) => {
-    const started = await start(s, signal);
-    return {
-      ...started,
-      wait: async () => {
-        const token = await started.wait();
-        saved();
-        return token;
-      },
-    };
-  };
-}
-
-// What closing setup without finishing reports.
-export function setupClosed(keySaved: boolean): string {
-  return keySaved ? 'Setup closed. Your Permafrost access key was saved.' : 'Setup closed. Nothing was changed.';
-}
-
 // Runs the full-screen setup with the same connect, unlock and save steps as plain `frost init`.
 export async function runSetup(ctx: Context, cfg: config.Config, existing: boolean, local?: Key): Promise<void> {
   const known = await loadKnown();
-  let keySaved = false;
   const result = await setup(
     {
       localKey: local,
@@ -109,10 +83,7 @@ export async function runSetup(ctx: Context, cfg: config.Config, existing: boole
           return '';
         }
       },
-      checkout: trackedCheckout(
-        (s, signal) => checkout(ctx, s, signal),
-        () => (keySaved = true),
-      ),
+      openBrowser: url => void ctx.hooks.openBrowser(url).catch(() => {}),
       addPath: async (typed, paths) => {
         const result = await config.addPath(typed, paths);
         return { clean: result.path, inside: result.inside };
@@ -124,7 +95,7 @@ export async function runSetup(ctx: Context, cfg: config.Config, existing: boole
   );
 
   if (!result.saved) {
-    ctx.fmt.single(ctx.fmt.dim(setupClosed(keySaved)));
+    ctx.fmt.single(ctx.fmt.dim('Setup closed. Nothing was changed.'));
     return;
   }
   const b = ctx.fmt.block();

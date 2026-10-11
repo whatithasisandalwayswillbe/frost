@@ -1,5 +1,5 @@
 <div align="center">
-<img src="assets/Icon_PNG_v1.0__frost.png" alt="frost" width="128" height="128" />
+<img src=".github/frost-icon.png" alt="frost" width="128" height="128" />
 </div>
 
 <h3 align="center">frost</h3>

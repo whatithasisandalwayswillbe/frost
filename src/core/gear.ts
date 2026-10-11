@@ -12,8 +12,8 @@ const WINDOW = TABLE_BYTES;
 const WINDOW_BYTES = 8 << 20;
 const PAGES = Math.ceil((WINDOW + WINDOW_BYTES) / 65536);
 
-// Data is copied in and scanned this much at a time, so a cut early in a long input doesn't pay
-// to copy the rest of it.
+// Data is copied in and scanned this much at a time, so a cut early in a long input doesn't copy
+// the rest of it for nothing.
 const SEGMENT = 1 << 20;
 
 // The cut masks as signed 64-bit constants: the top 22 bits before the average size, and the

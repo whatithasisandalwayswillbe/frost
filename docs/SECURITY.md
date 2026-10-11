@@ -97,10 +97,6 @@ On Windows, replacing a changed running runtime requires moving the old executab
 
 Set `update.auto` to `false` to review each release before installing it. frost still tells you when one is out.
 
-## Getting a Permafrost key in setup
-
-The browser hands the key back to frost on `127.0.0.1`, and frost checks it against a random `state`. [PERMAFROST.md](PERMAFROST.md#getting-a-key) has the details.
-
 ## Local files
 
 | File | Holds | Permissions when created |
