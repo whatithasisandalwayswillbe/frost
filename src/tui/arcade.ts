@@ -1,8 +1,10 @@
 // icebreaker, the hidden game in the browser. Ice blocks holding files fall towards your ship. Shoot the ice to thaw
 // the files, catch them as they drop and dodge the bit rot. The browser owns the timer and calls tick and view.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { openRootSync } from '../platform/fs-root.js';
 import { Player, type Clip } from '../platform/sound.js';
 import { style, box, stack, pad, width, joinFit, wordmark, wrapPlain, type Style } from './render.js';
 
@@ -248,10 +250,24 @@ export class Arcade {
   save(): void {
     if (!this.bestPath) return;
     try {
-      mkdirSync(path.dirname(this.bestPath), { recursive: true, mode: 0o700 });
-      writeFileSync(this.bestPath, JSON.stringify({ best: this.best, ...(this.muted ? { muted: true } : {}) }), {
-        mode: 0o600,
-      });
+      const root = openRootSync(path.dirname(this.bestPath), { create: true, mode: 0o700 });
+      const temporary = '.frost-' + randomUUID();
+      try {
+        const file = root.open(temporary, { write: true, create: true, exclusive: true, mode: 0o600 });
+        try {
+          file.writeFile(JSON.stringify({ best: this.best, ...(this.muted ? { muted: true } : {}) }));
+          file.sync();
+        } finally {
+          file.close();
+        }
+        root.rename(temporary, root, path.basename(this.bestPath));
+        if (process.platform !== 'win32') root.sync();
+      } finally {
+        try {
+          root.remove(temporary);
+        } catch {}
+        root.close();
+      }
     } catch {}
   }
 

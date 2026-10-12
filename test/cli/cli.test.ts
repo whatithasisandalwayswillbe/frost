@@ -880,10 +880,10 @@ test('restore rerun hints quote arguments for the platform shell', () => {
     rerunCommand(
       'ab12',
       ['C:\\Users\\me\\My Files', 'C:\\Users\\me\\plain'],
-      { ...flags, to: 'D:\\Restore (1)' },
+      { ...flags, to: 'D:\\Restore Folder' },
       'win32',
     ),
-    'frost restore ab12 "C:\\Users\\me\\My Files" C:\\Users\\me\\plain --to "D:\\Restore (1)"',
+    'frost restore ab12 "C:\\Users\\me\\My Files" C:\\Users\\me\\plain --to "D:\\Restore Folder"',
   );
   const special = rerunCommand(
     'ab12',

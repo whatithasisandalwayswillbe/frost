@@ -3,7 +3,6 @@
 
 import path from 'node:path';
 import { stat } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import * as config from '../core/config.js';
 import { resolve, restoreBase, shorten, shortOf } from '../core/snapshot.js';
 import { besideFolder, newRestoreFolder, canOverwrite, RestoreError } from '../engine/index.js';
@@ -11,6 +10,7 @@ import { slash } from '../engine/exclude.js';
 import { Context } from './context.js';
 import { ago, when, tildify, humanCount, humanBytes, printable, statusLine } from './format.js';
 import { requireConfirmation } from './prompt.js';
+import { frostCommand } from './command.js';
 
 interface RestoreFlags {
   beside: boolean;
@@ -38,17 +38,7 @@ export function rerunCommand(
     ...(flags.configDir ? ['--config-dir', flags.configDir] : []),
     ...(flags.cacheDir ? ['--cache-dir', flags.cacheDir] : []),
   ];
-  if (platform === 'win32' && args.some(s => /[$`%!]/.test(s))) {
-    const script = process.env.FROST_APP_ROOT
-      ? path.join(process.env.FROST_APP_ROOT, 'launch.mjs')
-      : fileURLToPath(new URL('./main.js', import.meta.url));
-    return '& ' + [process.execPath, script, ...args].map(s => "'" + s.replaceAll("'", "''") + "'").join(' ');
-  }
-  const quote =
-    platform === 'win32'
-      ? (s: string) => (/^[\w.:\\/-]+$/.test(s) ? s : '"' + s + '"')
-      : (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : "'" + s.replaceAll("'", "'\\''") + "'");
-  return ['frost', ...args.map(quote)].join(' ');
+  return frostCommand(args, platform);
 }
 
 export async function runRestore(ctx: Context, args: string[], flags: RestoreFlags): Promise<void> {
@@ -108,9 +98,12 @@ export async function runRestore(ctx: Context, args: string[], flags: RestoreFla
     const p = ctx.prompt();
     p.open('restore ' + shortOf(shorten(snaps), snap.id), when(snap.time) + ' (' + ago(snap.time) + ')');
     p.gap();
-    p.row('paths', include.length ? include.join('\n') : 'everything');
+    p.row('paths', include.length ? include.map(printable).join('\n') : 'everything');
     if (target)
-      p.row('into', tildify(target) + (resume ? ctx.fmt.dim(', carrying on with the unfinished restore there') : ''));
+      p.row(
+        'into',
+        printable(tildify(target)) + (resume ? ctx.fmt.dim(', carrying on with the unfinished restore there') : ''),
+      );
     else {
       // Restoring in place has no base, so every file goes back to its original path.
       base = '';

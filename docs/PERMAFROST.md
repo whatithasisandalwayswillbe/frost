@@ -24,7 +24,7 @@ Keys are paths like `chunks/ab/ab12...` or `snapshots/maple-absurd-3f1c9a0b2e7`.
 - A key is 1 to 1024 bytes, with no leading `/`, no empty segments, and no `.` or `..` segments.
 - Keys are case sensitive.
 
-Keys go in the URL path as they are, since the allowed characters need no escaping. Servers must reject anything else with `400 invalid_key`.
+Keys go in the URL path as they are, since the allowed characters need no escaping. Servers must reject anything else with `400 invalid_key`, before URL normalization can turn dot segments or backslashes into another key. Percent-encoded keys are invalid too.
 
 ## Endpoints
 
@@ -34,13 +34,17 @@ Stores the request body under `key`, replacing any existing object.
 
 | Header | Required | Meaning |
 |---|---|---|
-| `Content-Length` | yes | Body size |
+| `Content-Length` | yes | Body size, greater than zero |
 | `X-Content-SHA256` | yes | Lowercase hex SHA-256 of the body. The server rejects the upload with `400 checksum_mismatch` if it doesn't match |
 | `If-None-Match` | no | When `*`, create the object atomically only if the key is absent. Otherwise return `412 already_exists` without changing the existing object |
 
-Responses: `204` stored, `400`, `401`, `403 read_only`, `412 already_exists`, `413` object too large, `507 quota_exceeded`.
+Responses: `204` stored, `400`, `401`, `403 read_only`, `412 already_exists`, `413` object too large, `503 unavailable`, `507 quota_exceeded`.
+
+Empty object bodies are refused with `400 invalid_body`. A busy server may refuse an upload with `503 unavailable` and `Retry-After` before reading its body. Clients retry as described below.
 
 A server with a storage limit refuses an upload that would take the account past it, with `507 quota_exceeded`. Replacing an object counts only the difference in size. A read-only account refuses uploads with `403 read_only` but still serves downloads, listings and deletes.
+
+The server must recheck access and the current storage limit before committing an upload. A key revoked, account closed or storage limit changed while an upload was in flight must not bypass those checks. An expired upload reservation fails with `503 unavailable` and leaves no indexed object.
 
 frost uses conditional writes for `frost.repo`, snapshot headers and trees, so they're required. Servers must enforce them atomically, including for requests from different clients. A conditional request must never overwrite an existing object.
 
@@ -118,6 +122,7 @@ Every non-2xx response has this body:
 | Status | Code | Meaning |
 |---|---|---|
 | 400 | `invalid_key` | The key breaks the rules above |
+| 400 | `invalid_body` | The body is empty or doesn't match its declared length |
 | 400 | `checksum_mismatch` | The body doesn't match `X-Content-SHA256` |
 | 401 | `unauthorized` | Missing or invalid token. `message` says why, for example that a newer key replaced it |
 | 403 | `forbidden` | The token is valid but not allowed to do this |

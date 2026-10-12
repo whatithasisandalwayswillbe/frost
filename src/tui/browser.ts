@@ -16,6 +16,7 @@ import { RestoreState, restoreContent, restoreHints, carryOn, asError } from './
 import { runTerminal, type TerminalOptions } from './terminal.js';
 import {
   style,
+  printable,
   width,
   height,
   strip,
@@ -195,6 +196,20 @@ export class BrowserModel {
   diffMod = 0;
 
   rs = new RestoreState();
+  private restorePreparation?: { controller: AbortController; cancel: (key: string) => void };
+
+  private prepareRestore(cancel: (key: string) => void) {
+    if (this.restorePreparation) return;
+    return (this.restorePreparation = { controller: new AbortController(), cancel });
+  }
+
+  private prepared(work: NonNullable<BrowserModel['restorePreparation']>): boolean {
+    return this.restorePreparation === work && !this.exited && !this.signal?.aborted;
+  }
+
+  private finishPreparing(work: NonNullable<BrowserModel['restorePreparation']>): void {
+    if (this.restorePreparation === work) this.restorePreparation = undefined;
+  }
 
   // bestPath is the file that keeps the hidden game's best score. The terminal sets onChange to redraw
   // after async work.
@@ -379,6 +394,15 @@ export class BrowserModel {
     this.flash = '';
     if (k === 'ctrl+c') {
       this.exited = true;
+      return;
+    }
+    if (this.restorePreparation) {
+      if (['esc', 'q'].includes(k)) {
+        const work = this.restorePreparation;
+        this.restorePreparation = undefined;
+        work.controller.abort();
+        work.cancel(k);
+      }
       return;
     }
     if (this.screen === 'restore' && this.rs.phase === 'typing' && !this.overlay && !this.err) {
@@ -568,8 +592,20 @@ export class BrowserModel {
       const paths = [...this.sel].sort();
       if (!paths.length && n) paths.push(kids[this.fileCur]);
       if (paths.length) {
-        this.rs = await RestoreState.create(this.snap!, this.shortID(this.snap!.id), paths, t, this.deps);
-        this.screen = 'restore';
+        const work = this.prepareRestore(key => {
+          if (key === 'q') this.exited = true;
+          else this.screen = 'snapshots';
+        });
+        if (!work) return;
+        try {
+          const rs = await RestoreState.create(this.snap!, this.shortID(this.snap!.id), paths, t, this.deps);
+          if (this.prepared(work)) {
+            this.rs = rs;
+            this.screen = 'restore';
+          }
+        } finally {
+          this.finishPreparing(work);
+        }
       }
     }
 
@@ -678,7 +714,7 @@ export class BrowserModel {
     else if (this.overlay) crumb = this.overlay;
     if (crumb) left += style('dim', '  ' + truncate(crumb, Math.max(this.innerW() - width(left) - 2, 0)));
 
-    const right = style('dim', this.repo.label + '  key ') + this.keyLabel();
+    const right = style('dim', printable(this.repo.label) + '  key ') + this.keyLabel();
     const gap = this.innerW() - width(left) - width(right);
     return gap < 1 ? left + fill(Math.max(this.innerW() - width(left), 0)) : left + fill(gap) + right;
   }
@@ -687,7 +723,7 @@ export class BrowserModel {
   footer(): string {
     const w = this.innerW();
     const rule = style('faded', '─'.repeat(w));
-    if (this.flash) return rule + '\n' + pad(style('caution', this.flash), w);
+    if (this.flash) return rule + '\n' + pad(style('caution', printable(this.flash)), w);
     let hints: string[];
     if (this.err)
       hints =
@@ -1190,18 +1226,21 @@ export class BrowserModel {
   // different one. A folder an earlier restore can carry on in counts as well as a free one.
   async confirmRestore(k: string): Promise<void> {
     const rs = this.rs;
-    if (rs.dest === 2) {
-      if (k !== 'y') {
-        this.flash = 'Overwriting replaces existing files. Press [y] to confirm.';
-        return;
-      }
-      rs.folder = '';
-    } else {
-      const current = rs.dest === 1 ? rs.chosen : rs.beside;
-      const parent = rs.dest === 1 ? rs.picked : path.dirname(rs.beside);
-      try {
+    if (!['confirm', 'ready'].includes(rs.phase)) return;
+    const work = this.prepareRestore(() => (this.screen = 'files'));
+    if (!work) return;
+    try {
+      if (rs.dest === 2) {
+        if (k !== 'y') {
+          this.flash = 'Overwriting replaces existing files. Press [y] to confirm.';
+          return;
+        }
+        rs.folder = '';
+      } else {
+        const current = rs.dest === 1 ? rs.chosen : rs.beside;
+        const parent = rs.dest === 1 ? rs.picked : path.dirname(rs.beside);
         const { dir } = await this.deps.newRestoreFolder(parent, rs.snap!.id, rs.paths);
-        this.signal?.throwIfAborted();
+        if (!this.prepared(work)) return;
         if (dir !== current) {
           if (rs.dest === 1) rs.chosen = dir;
           else rs.beside = dir;
@@ -1209,14 +1248,18 @@ export class BrowserModel {
           return;
         }
         rs.folder = dir;
-      } catch (e) {
+      }
+      rs.phase = 'running';
+    } catch (e) {
+      if (this.prepared(work)) {
         rs.err = asError(e);
         rs.phase = 'done';
-        return;
       }
+      return;
+    } finally {
+      this.finishPreparing(work);
     }
 
-    rs.phase = 'running';
     this.onChange?.();
     try {
       rs.res = await this.repo.restore(
@@ -1259,12 +1302,20 @@ export class BrowserModel {
   // Opens the system folder picker without waiting for it, or falls back to typing when there isn't one.
   // The picker starts in the folder picked before, else the selection's original folder if it exists, else home.
   async startPick(): Promise<void> {
-    if (!(await this.deps.canPick())) {
-      this.startTyping();
-      this.flash = "There's no folder picker here, so type the folder instead.";
-      return;
-    }
     const rs = this.rs;
+    const work = this.prepareRestore(() => (rs.phase = rs.afterPick()));
+    if (!work) return;
+    try {
+      const canPick = await this.deps.canPick();
+      if (!this.prepared(work)) return;
+      if (!canPick) {
+        this.startTyping();
+        this.flash = "There's no folder picker here, so type the folder instead.";
+        return;
+      }
+    } finally {
+      this.finishPreparing(work);
+    }
     const seq = ++rs.pickSeq;
     const controller = new AbortController();
     rs.pickController = controller;
@@ -1331,15 +1382,19 @@ export class BrowserModel {
       rs.inputErr = 'Type the folder to restore into.';
       return;
     }
+    const work = this.prepareRestore(() => (rs.phase = rs.afterPick()));
+    if (!work) return;
     try {
       await rs.setPicked(
         v.startsWith('~/') || v.startsWith('~\\') ? path.join(os.homedir(), v.slice(2)) : v,
         this.deps,
-        this.signal,
+        AbortSignal.any([work.controller.signal, this.signal!]),
       );
-      rs.phase = 'ready';
+      if (this.prepared(work)) rs.phase = 'ready';
     } catch (e) {
-      rs.inputErr = asError(e).message;
+      if (this.prepared(work)) rs.inputErr = asError(e).message;
+    } finally {
+      this.finishPreparing(work);
     }
   }
 }

@@ -1,10 +1,12 @@
 // Installs the recurring `backup --scheduled` job with launchd on macOS, Task Scheduler on
 // Windows, and a systemd user timer or a crontab line elsewhere. Every scheduler command goes
 // through a runner, so tests never touch a real scheduler or lingering.
-import { access, mkdir, readFile, writeFile, unlink, mkdtemp, rm } from 'node:fs/promises';
+import { access, readFile, writeFile, unlink, mkdtemp, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { run, checked, type Runner } from './command.js';
+import { openRoot } from './fs-root.js';
 
 interface Job {
   binary: string;
@@ -121,23 +123,27 @@ export function launchdPlist(j: Job): string {
 // A oneshot service at low CPU and idle I/O priority, and a timer for it. Persistent catches up
 // a run missed while the machine was off, and RandomizedDelaySec spreads starts over 5 minutes.
 export function systemdUnits(j: Job): { service: string; timer: string } {
-  // Paths are double-quoted with C-style escapes. % and $ are doubled so systemd doesn't expand
-  // specifiers or variables. The callback stops replaceAll from reading '$$' as a single '$'.
-  const quote = (s: string) => JSON.stringify(s.replaceAll('%', '%%').replaceAll('$', () => '$$'));
+  // Paths are double-quoted with C-style escapes, and % is doubled so systemd doesn't expand specifiers.
+  // systemd substitutes $ variables in arguments but not in the executable path, so only arguments
+  // double $. The callback stops replaceAll from reading '$$' as a single '$'. The : prefix that turns
+  // substitution off needs systemd 242, so older releases couldn't run the unit.
+  const quote = (s: string) => JSON.stringify(s.replaceAll('%', '%%'));
+  const argument = (s: string) => JSON.stringify(s.replaceAll('%', '%%').replaceAll('$', () => '$$'));
   const raw = argumentsFor(j);
-  const args = raw.map((s, i) => (argumentValue(j, raw, i) ? quote(s) : s));
+  const args = raw.map((s, i) => (argumentValue(j, raw, i) ? argument(s) : s));
   const service = `[Unit]\nDescription=frost backup\n\n[Service]\nType=oneshot\nExecStart=${quote(j.binary)} ${args.join(' ')}\nNice=10\nIOSchedulingClass=idle\n`;
   const timer = `[Unit]\nDescription=Run frost backup ${humanEvery(j.every)}\n\n[Timer]\nOnCalendar=${onCalendar(j.every)}\nPersistent=true\nRandomizedDelaySec=300\n\n[Install]\nWantedBy=timers.target\n`;
   return { service, timer };
 }
 
-// Cron turns an unescaped % into a newline, so it's escaped. The trailing marker lets stripCron
-// find the line again.
+// Cron removes the escape before %, even inside shell quotes. Put each escaped % outside the
+// single-quoted segments so a preceding literal backslash can't hide its escape from cron.
 export function cronLine(j: Job): string {
+  const quote = (s: string) => shellQuote(s).replaceAll('%', "'\\%'");
   const raw = argumentsFor(j);
-  const args = raw.map((s, i) => (argumentValue(j, raw, i) ? shellQuote(s) : s));
-  const command = `${shellQuote(j.binary)} ${args.join(' ')} >> ${shellQuote(j.logFile ?? '')} 2>&1`;
-  return `${cronSpec(j.every)} ${command.replaceAll('%', '\\%')} ${cronMarker}`;
+  const args = raw.map((s, i) => (argumentValue(j, raw, i) ? quote(s) : s));
+  const command = `${quote(j.binary)} ${args.join(' ')} >> ${quote(j.logFile ?? '')} 2>&1`;
+  return `${cronSpec(j.every)} ${command} ${cronMarker}`;
 }
 
 // A comment mentioning the marker belongs to the user, even when the marker is its last text.
@@ -213,6 +219,31 @@ async function removeFile(p: string): Promise<void> {
     await unlink(p);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  }
+}
+
+// Replace the definition through its retained parent, so an existing link never redirects a write.
+async function writeDefinition(destination: string, data: string): Promise<void> {
+  const directory = await openRoot(path.dirname(destination), { create: true, mode: 0o755, trustedFinalLink: true });
+  const temporary = '.frost-' + randomUUID();
+  try {
+    const file = directory.open(temporary, { write: true, create: true, exclusive: true, mode: 0o644 });
+    try {
+      file.writeFile(data);
+      file.sync();
+    } finally {
+      file.close();
+    }
+    directory.rename(temporary, directory, path.basename(destination));
+    if (process.platform !== 'win32') directory.sync();
+  } finally {
+    try {
+      directory.remove(temporary);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    } finally {
+      directory.close();
+    }
   }
 }
 
@@ -304,8 +335,7 @@ export class Scheduler {
     switch (await this.kind()) {
       case 'launchd': {
         // Unload any copy that's already loaded, then load the new one.
-        await mkdir(path.dirname(this.plistPath), { recursive: true });
-        await writeFile(this.plistPath, launchdPlist(j), { mode: 0o644 });
+        await writeDefinition(this.plistPath, launchdPlist(j));
         try {
           await this.runner('launchctl', ['bootout', `gui/${this.uid}`, this.plistPath]);
         } catch {}
@@ -316,13 +346,12 @@ export class Scheduler {
       case 'systemd': {
         // Claim lingering before writing the timer, so the marker can go in it. If anything
         // fails, lingering goes back off only when this call turned it on.
-        await mkdir(this.unitDir, { recursive: true });
         const timer = path.join(this.unitDir, systemdUnit + '.timer');
         const claimed = await this.claimLinger(await optionalRead(timer));
         const units = systemdUnits(j);
         try {
-          await writeFile(path.join(this.unitDir, systemdUnit + '.service'), units.service, { mode: 0o644 });
-          await writeFile(timer, units.timer + (claimed.ours ? lingerMarker + '\n' : ''), { mode: 0o644 });
+          await writeDefinition(path.join(this.unitDir, systemdUnit + '.service'), units.service);
+          await writeDefinition(timer, units.timer + (claimed.ours ? lingerMarker + '\n' : ''));
           await checked(this.runner, 'systemctl', ['--user', 'daemon-reload']);
           await checked(this.runner, 'systemctl', ['--user', 'enable', '--now', systemdUnit + '.timer']);
         } catch (e) {
@@ -333,7 +362,7 @@ export class Scheduler {
               // we just rolled back. Otherwise a retry skips enabling lingering again.
               const current = await optionalRead(timer);
               if (current.includes(lingerMarker))
-                await writeFile(timer, current.replace(lingerMarker + '\n', ''), { mode: 0o644 });
+                await writeDefinition(timer, current.replace(lingerMarker + '\n', ''));
             } catch {}
           }
           throw e;

@@ -3,6 +3,7 @@
 
 import { addPath as coreAddPath } from '../core/config.js';
 import { permafrostKeyPage } from '../core/storage.js';
+import { Excluder } from '../engine/exclude.js';
 import type { Config, Storage, Key } from './types.js';
 import { Form, problem, inputBox, type KeyEvent } from './input.js';
 import { providers, matchProvider, describeStorage, projectLink } from './providers.js';
@@ -659,7 +660,9 @@ export class SetupModel {
         // Nothing is added unless every pattern typed is valid.
         const parts = splitList(typed);
         for (const p of parts) {
-          if (!validPattern(p)) {
+          try {
+            new Excluder([p]);
+          } catch {
             this.err = JSON.stringify(p) + " isn't a valid pattern. Check its brackets.";
             return;
           }
@@ -1232,24 +1235,6 @@ export class SetupModel {
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
-}
-
-// Checks a skip pattern's brackets. Classes can't nest, every [ needs its ], and a backslash
-// escapes the next character, so a trailing one is invalid.
-function validPattern(p: string): boolean {
-  let depth = 0;
-  for (let i = 0; i < p.length; i++) {
-    if (p[i] === '\\') {
-      if (++i >= p.length) return false;
-    } else if (p[i] === '[') {
-      if (depth) return false;
-      depth++;
-    } else if (p[i] === ']') {
-      if (!depth) return false;
-      depth--;
-    }
-  }
-  return !depth;
 }
 
 // Used when SetupDeps leaves out addPath.

@@ -41,7 +41,7 @@ export function printSnapshots(b: Block, snaps: Snapshot[], short: Map<string, s
     return;
   }
   const shown = all ? snaps : snaps.slice(0, 10);
-  const width = Math.max('snapshot'.length, ...shown.map(s => shortOf(short, s.id).length));
+  const width = shown.reduce((w, s) => Math.max(w, shortOf(short, s.id).length), 'snapshot'.length);
   const row = (id: string, taken: string, files: string, size: string, newer: string) =>
     id.padEnd(width) +
     '    ' +
@@ -100,7 +100,7 @@ export async function runStatus(ctx: Context, verify: boolean, all: boolean): Pr
     const f = ctx.fmt;
     const b = f.block();
     let verifyFailed = false;
-    b.open('frost', ctx.version + '  ' + e.repo.backend + '  key ' + e.repo.key.fingerprint());
+    b.open('frost', ctx.version + '  ' + printable(String(e.repo.backend)) + '  key ' + e.repo.key.fingerprint());
     b.gap();
 
     // --verify checks a sample now. A failure is reported at the end, after the rest of the status.

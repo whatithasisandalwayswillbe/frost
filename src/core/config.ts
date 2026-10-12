@@ -130,7 +130,13 @@ export function parse(raw: string | Buffer, initial = defaultConfig()): Config {
   try {
     decoded = TOML.parse(raw.toString()) as Record<string, unknown>;
   } catch (error) {
-    throw new Error(`${configPath()}: ${(error as Error).message}`, { cause: error });
+    // The parser's message and cause include source lines, which can contain storage credentials.
+    const { line, col } = error as { line?: number; col?: number };
+    const at =
+      Number.isSafeInteger(line) && line! >= 0 && Number.isSafeInteger(col) && col! >= 0
+        ? ` at line ${line! + 1}, column ${col! + 1}`
+        : '';
+    throw new Error(`${configPath()}: invalid TOML${at}`);
   }
 
   const c = structuredClone(initial);

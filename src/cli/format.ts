@@ -4,6 +4,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { palette, width as visibleWidth, cutStyled, tailCells } from '../tui/render.js';
+export { humanBytes } from '../tui/render.js';
 import { colorSequence, type ColorProfile } from './terminal.js';
 
 export type Writer = (text: string) => void;
@@ -13,7 +14,7 @@ export const strip = (s: string): string => s.replace(/\x1b\[[0-?]*[ -/]*[@-~]|\
 
 // Replaces control characters, so file names and remote messages can't move the cursor or restyle the
 // terminal.
-export const printable = (s: string): string => s.replace(/\p{Cc}/gu, '?');
+export const printable = (s: string): string => s.toWellFormed().replace(/\p{Cc}/gu, '?');
 
 // Shows a slash-separated path with backslashes on Windows.
 export const nativePath = (p: string): string => (process.platform === 'win32' ? p.replaceAll('/', '\\') : p);
@@ -31,20 +32,6 @@ export const humanCount = (n: number): string => String(n).replace(/\B(?=(\d{3})
 
 export const plural = (n: number, thing: string): string =>
   n === 1 ? '1 ' + thing : humanCount(n) + ' ' + thing + 's';
-
-// Decimal units with one decimal place. An exact .25 rounds to even (1.25 shows as 1.2), where toFixed
-// would round it up.
-export function humanBytes(n: number): string {
-  if (n < 1000) return n + ' B';
-  let div = 1000,
-    exp = 0;
-  for (let m = Math.trunc(n / 1000); m >= 1000; m = Math.trunc(m / 1000)) {
-    div *= 1000;
-    exp++;
-  }
-  const value = n / div;
-  return (value % 1 === 0.25 ? Math.trunc(value) + '.2' : value.toFixed(1)) + ' ' + 'kMGTPE'[exp] + 'B';
-}
 
 // A rough duration: minutes, then hours up to two days, then days.
 export function relative(ms: number): string {

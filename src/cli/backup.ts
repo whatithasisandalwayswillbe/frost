@@ -189,7 +189,7 @@ export async function openScheduledLog(p: string) {
   let file: RootFile | undefined;
   try {
     const before = existing(root, name);
-    if (before && (!before.isFile() || before.isSymbolicLink()))
+    if (before && (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1))
       throw new Error('scheduled run log must be a regular file');
     file = root.open(name, { write: true, create: true, append: true, mode: 0o600 });
 
@@ -199,6 +199,7 @@ export async function openScheduledLog(p: string) {
     if (
       !after.isFile() ||
       after.isSymbolicLink() ||
+      current.nlink !== 1 ||
       !sameFile(current, after) ||
       (before && !sameFile(before, current))
     )
@@ -207,7 +208,9 @@ export async function openScheduledLog(p: string) {
     if (current.size > 1 << 20) {
       const trim = root.open(name, { write: true });
       try {
-        if (!sameFile(trim.stat(), current)) throw new Error('scheduled run log changed while trimming it');
+        const stat = trim.stat();
+        if (stat.nlink !== 1 || !sameFile(stat, current))
+          throw new Error('scheduled run log changed while trimming it');
         trim.truncate(0);
       } finally {
         trim.close();
@@ -218,6 +221,7 @@ export async function openScheduledLog(p: string) {
     return {
       stat: async () => held.stat(),
       write: async (data: string | Buffer) => {
+        if (held.stat().nlink !== 1) throw new Error('scheduled run log must have one hardlink');
         held.writeFile(data);
         return { bytesWritten: Buffer.byteLength(data) };
       },
@@ -301,7 +305,7 @@ export async function runBackup(ctx: Context, flags: BackupFlags): Promise<void>
     try {
       const { cfg, engine: e } = a;
       const b = ctx.fmt.block();
-      b.open(flags.dryRun ? 'dry run' : 'backup', String(e.repo.backend));
+      b.open(flags.dryRun ? 'dry run' : 'backup', printable(String(e.repo.backend)));
 
       // Progress redraws at most every 100 ms, and only on an interactive terminal.
       let last = 0;

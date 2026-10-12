@@ -2,7 +2,7 @@
 // terminal or a pipe.
 
 import { StringDecoder } from 'node:string_decoder';
-import { Block, Format } from './format.js';
+import { Block, Format, printable } from './format.js';
 
 // Turns a declined or failed confirmation into a "cancelled" error.
 export async function requireConfirmation(answer: Promise<boolean>): Promise<void> {
@@ -146,7 +146,7 @@ export class Prompter extends Block {
   }
 
   async ask(q: string, def = ''): Promise<string> {
-    this.question(q + (def ? ' ' + this.fmt.dim('[' + def + ']') : ''));
+    this.question(q + (def ? ' ' + this.fmt.dim('[' + printable(def) + ']') : ''));
     return (await this.answer()) || def;
   }
 

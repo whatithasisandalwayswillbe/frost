@@ -5,7 +5,7 @@ import type { Storage } from '../core/config.js';
 import { Repo, errNotInitialized, errWrongKey } from '../core/repo.js';
 import { location, type Backend } from '../core/storage.js';
 import { Context } from './context.js';
-import { Block } from './format.js';
+import { Block, printable } from './format.js';
 import { explainConnect, probe } from './connect.js';
 import { loadKnown, moveHint } from './known.js';
 
@@ -25,7 +25,7 @@ export async function checkStorageChange(
 ): Promise<void> {
   const problem = (s: string) => {
     if (warnOnly) {
-      out.warn(out.fmt.caution(s));
+      out.warn(out.fmt.caution(out.fmt.errorText(s)));
       return;
     }
     throw new Error(s + '\n\nNothing was saved. To change it without this check, use `frost config edit`');
@@ -119,7 +119,7 @@ export async function checkStorageChange(
   if (known.repo_id && repo.info.id !== known.repo_id)
     out.warn(
       'Those are different backups from the ones in ' +
-        known.shown +
+        printable(known.shown ?? '') +
         '. frost will show their snapshots instead. Yours stay where they are.',
     );
 }

@@ -1,18 +1,27 @@
 // Confined filesystem access through retained directory handles. openRoot walks a path one
 // component at a time from the volume root, and later operations resolve against the handle.
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import type { RootBackend, RootDirectory, RootFile, RootStat } from './fs-root-types.js';
 export type { RootDirectory, RootFile, RootStat, RootOpenOptions } from './fs-root-types.js';
 export { sameFile } from './fs-root-types.js';
 
 let loaded: Promise<RootBackend> | undefined;
+let native: RootBackend | undefined;
+const require = createRequire(import.meta.url);
 
-// Loads the platform's native backend once. Importing the Windows backend binds its DLLs.
-export function backend(): Promise<RootBackend> {
-  return (loaded ??=
+// Both backends are synchronous modules. Node 26 loads their ESM exports through require without
+// starting an asynchronous path walk or changing which native bindings enforce confinement.
+function backendSync(): RootBackend {
+  return (native ??=
     process.platform === 'win32'
-      ? import('./fs-root-windows.js').then(module => module.windowsBackend)
-      : import('./fs-root-posix.js').then(module => module.posixBackend));
+      ? require('./fs-root-windows.js').windowsBackend
+      : require('./fs-root-posix.js').posixBackend);
+}
+
+// Loads the platform's native backend once. Loading the Windows backend binds its DLLs.
+export function backend(): Promise<RootBackend> {
+  return (loaded ??= Promise.resolve().then(backendSync));
 }
 
 const isMissing = (error: unknown) => (error as NodeJS.ErrnoException)?.code === 'ENOENT';
@@ -63,7 +72,22 @@ export async function openRoot(
   name: string,
   options: { create?: boolean; mode?: number; trustedFinalLink?: boolean } = {},
 ): Promise<RootDirectory> {
-  const native = await backend();
+  return openRootWith(await backend(), name, options);
+}
+
+// The same native walk for synchronous callers, such as the game's small saved preferences.
+export function openRootSync(
+  name: string,
+  options: { create?: boolean; mode?: number; trustedFinalLink?: boolean } = {},
+): RootDirectory {
+  return openRootWith(backendSync(), name, options);
+}
+
+function openRootWith(
+  native: RootBackend,
+  name: string,
+  options: { create?: boolean; mode?: number; trustedFinalLink?: boolean },
+): RootDirectory {
   let absolute = path.resolve(name);
   let volume = path.parse(absolute).root;
   let currentPath = volume;

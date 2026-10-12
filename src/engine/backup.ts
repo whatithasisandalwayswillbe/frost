@@ -20,7 +20,7 @@ import { chunksFromReader, newTable, split, minSize, maxSize } from '../core/chu
 import { newID, compare, timeValue } from '../core/snapshot.js';
 import { SaveSnapshotError } from '../core/repo.js';
 import { location } from '../core/storage.js';
-import { Excluder, patternRegex, slash } from './exclude.js';
+import { Excluder, slash } from './exclude.js';
 import { listDigest, countChanges } from './changes.js';
 import { isPartial } from './restore.js';
 import { refuseDatalessReads } from '../platform/dataless.js';
@@ -88,8 +88,9 @@ export function mtime(s: BigIntStats): string {
 
   // Files in one folder often share a second, so the last date string is kept.
   if (seconds !== lastSecond) {
+    const iso = new Date(Number(seconds * 1000n)).toISOString();
+    lastDate = iso.slice(0, -5);
     lastSecond = seconds;
-    lastDate = new Date(Number(seconds * 1000n)).toISOString().slice(0, 19);
   }
   if (!nanos) return lastDate + 'Z';
   let frac = String(nanos).padStart(9, '0');
@@ -126,13 +127,7 @@ export async function backup(e: EngineLike, opts: BackupOptions, signal?: AbortS
   if (!e.manifest) throw new Error('backup needs a manifest');
   if (!opts.paths.length) throw new Error('nothing to back up: no paths configured');
   if (opts.paths.some(p => !p.trim())) throw new Error("backup paths can't contain an empty entry");
-  for (const p of opts.exclude ?? []) {
-    try {
-      patternRegex(slash(p));
-    } catch (err) {
-      throw new Error(`invalid exclude pattern ${JSON.stringify(p)}: ${message(err)}`);
-    }
-  }
+  const ex = new Excluder(opts.exclude ?? []);
 
   // Reading a file that's only in iCloud would download it, so those reads fail instead.
   refuseDatalessReads();
@@ -213,7 +208,7 @@ export async function backup(e: EngineLike, opts: BackupOptions, signal?: AbortS
       prev.size === (f.size ?? 0) &&
       (!f.size || prev.chunks.length) &&
       prev.mtime === f.mtime &&
-      prev.chunks.every(id => manifest.hasChunk(id))
+      manifest.hasChunks(prev.chunks)
     ) {
       f.chunks = prev.chunks;
       return planned;
@@ -384,7 +379,6 @@ export async function backup(e: EngineLike, opts: BackupOptions, signal?: AbortS
     }
 
     // `visited` stops overlapping backup paths from being walked twice.
-    const ex = new Excluder(opts.exclude ?? []);
     const visited = new Set<string>();
     let walked = 0;
 
@@ -529,7 +523,7 @@ export async function backup(e: EngineLike, opts: BackupOptions, signal?: AbortS
           continue;
         }
         const prev = manifest.file(f.path);
-        if (prev && (!prev.size || prev.chunks.length) && prev.chunks.every(id => manifest.hasChunk(id))) {
+        if (prev && (!prev.size || prev.chunks.length) && manifest.hasChunks(prev.chunks)) {
           f.size = prev.size;
           f.mtime = prev.mtime;
           f.chunks = prev.chunks;

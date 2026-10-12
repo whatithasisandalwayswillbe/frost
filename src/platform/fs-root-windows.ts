@@ -223,9 +223,13 @@ function create(
 // Stats an open handle and returns a POSIX-style result. uid is always 0.
 function nativeStat(handle: bigint): RootStat {
   // BY_HANDLE_FILE_INFORMATION: attributes at 0, last write time at 20, volume serial at 28,
-  // size high and low at 32 and 36, file index high and low at 44 and 48.
+  // size high and low at 32 and 36, link count at 40, file index high and low at 44 and 48.
   const info = Buffer.alloc(52);
   requireWin(win.GetFileInformationByHandle(handle, info));
+  // FileBasicInfo (0) supplies ChangeTime, which changes with contents or metadata. CreationTime
+  // isn't a substitute: it stays fixed when a same-sized file is rewritten and its mtime reset.
+  const basic = Buffer.alloc(40);
+  requireWin(win.GetFileInformationByHandleEx(handle, 0, basic, basic.length));
   const attributes = info.readUInt32LE(0);
   const exactSize = (BigInt(info.readUInt32LE(32)) << 32n) | BigInt(info.readUInt32LE(36));
   if (exactSize > BigInt(Number.MAX_SAFE_INTEGER))
@@ -253,7 +257,9 @@ function nativeStat(handle: bigint): RootStat {
     size: Number(exactSize),
     mode,
     uid: 0,
+    nlink: info.readUInt32LE(40),
     mtimeNs: (info.readBigUInt64LE(20) - epoch) * 100n,
+    ctimeNs: (basic.readBigInt64LE(24) - epoch) * 100n,
     isFile: () => !isDir && !isLink,
     isDirectory: () => isDir && !isLink,
     isSymbolicLink: () => isLink,

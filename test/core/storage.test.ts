@@ -4,7 +4,7 @@
 
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
 import {
   APIError,
@@ -157,7 +157,10 @@ test('Permafrost reference server contract, retries and paginated conformance', 
       return;
     }
 
+    const rawPath = req.url!.split('?')[0];
     const url = new URL(req.url!, 'http://localhost');
+    if (rawPath !== url.pathname)
+      return refuse(res, 400, 'invalid_key', 'request paths must not contain normalized segments');
     if (url.pathname === '/v1/usage') {
       const message = readOnly ? 'uploads are paused' : used() >= quota * 0.9 ? 'storage is 90% full' : '';
       res.end(JSON.stringify({ used_bytes: used(), quota_bytes: quota, read_only: readOnly, message }));
@@ -172,8 +175,17 @@ test('Permafrost reference server contract, retries and paginated conformance', 
     }
 
     const key = url.pathname.slice('/v1/objects/'.length);
+    if (
+      !url.pathname.startsWith('/v1/objects/') ||
+      !/^[a-z0-9._/-]{1,1024}$/.test(key) ||
+      key.split('/').some(segment => !segment || segment === '.' || segment === '..')
+    )
+      return refuse(res, 400, 'invalid_key', 'invalid object key');
     if (req.method === 'PUT') {
       const data = await readBounded(req, 16 << 20);
+      if (!data.length) return refuse(res, 400, 'invalid_body', 'object bodies must not be empty');
+      if (Number(req.headers['content-length']) !== data.length)
+        return refuse(res, 400, 'invalid_body', 'body length does not match content-length');
       if (req.headers['x-content-sha256'] !== hash(data)) {
         res.writeHead(400);
         res.end();
@@ -209,6 +221,32 @@ test('Permafrost reference server contract, retries and paginated conformance', 
   // The last argument replaces the retry pause so the test doesn't wait.
   const backend = new PermafrostBackend(endpoint, 'tok', undefined, async () => {});
   await conformance(backend);
+
+  const emptyRequests = requests;
+  for (const put of [backend.put.bind(backend), backend.putNew.bind(backend)])
+    await assert.rejects(
+      put('empty', Buffer.alloc(0)),
+      error => error instanceof APIError && error.status === 400 && error.code === 'invalid_body',
+    );
+  assert.equal(requests - emptyRequests, 2);
+  assert.ok(!(await backend.list('')).includes('empty'));
+
+  // A raw request keeps segments that URL constructors would otherwise normalize before sending.
+  for (const key of ['chunks/../other', 'chunks/./other', 'chunks\\other', 'chunks/%2e%2e/other', 'chunks//other']) {
+    const response = await new Promise<{ status: number; body: Buffer }>((resolve, reject) => {
+      const req = httpRequest(
+        endpoint,
+        { path: '/v1/objects/' + key, headers: { Authorization: 'Bearer tok' } },
+        res => {
+          readBounded(res, 4096).then(body => resolve({ status: res.statusCode!, body }), reject);
+        },
+      );
+      req.once('error', reject);
+      req.end();
+    });
+    assert.equal(response.status, 400, key);
+    assert.equal(JSON.parse(response.body.toString()).error.code, 'invalid_key', key);
+  }
 
   // Two failures then success takes three requests. Constant failure gives up after four.
   failNext = 2;

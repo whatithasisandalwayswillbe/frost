@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, appendFile, stat, symlink, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, appendFile, stat, symlink, readdir, link } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -68,6 +68,49 @@ test('config full TOML syntax roundtrips and rejects unknown keys and wrong type
   const env = applyEnv(c, { FROST_S3_SECRET_ACCESS_KEY: 'from environment', AWS_SECRET_ACCESS_KEY: 'fallback' });
   assert.equal(env.storage.s3.secret_access_key, 'from environment');
   assert.equal(c.storage.s3.secret_access_key, 'test credential');
+});
+
+test('invalid TOML diagnostics omit source lines and credentials', () => {
+  for (const raw of [
+    '[storage.s3]\nsecret_access_key="private-storage-secret" trailing',
+    '[storage.permafrost]\nkey="private-storage-secret',
+  ]) {
+    assert.throws(
+      () => parse(raw),
+      error =>
+        error instanceof Error &&
+        /invalid TOML at line \d+, column \d+$/.test(error.message) &&
+        !error.message.includes('private-storage-secret') &&
+        !error.cause,
+    );
+  }
+});
+
+test('manifest rejects hardlinked journals before truncating or appending outside the cache', async t => {
+  const folder = await mkdtemp(path.join(os.tmpdir(), 'frost-manifest-hardlink-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const cache = path.join(folder, 'cache');
+  await mkdir(cache);
+  const file = path.join(cache, 'cache.jsonl');
+  const outside = path.join(folder, 'outside');
+  await writeFile(outside, '{valuable incomplete file');
+  await link(outside, file);
+  await assert.rejects(Manifest.open(file), /one hardlink/);
+  assert.equal(await readFile(outside, 'utf8'), '{valuable incomplete file');
+
+  await rm(file);
+  const manifest = await Manifest.open(file);
+  try {
+    await manifest.putMeta('before', true);
+    const original = await readFile(file);
+    const alias = path.join(folder, 'late-alias');
+    await link(file, alias);
+    await assert.rejects(manifest.putMeta('after', true), /one hardlink/);
+    assert.deepEqual(await readFile(alias), original);
+    assert.equal(manifest.getMeta('after'), undefined);
+  } finally {
+    await manifest.close();
+  }
 });
 
 test('private writes replace files and destination symlinks without touching targets', async t => {

@@ -165,6 +165,7 @@ export async function pickFolder(title: string, startDir = '', options: DesktopO
     if (!result) throw new Error('no folder picker available');
   }
 
-  if (result.code || !result.stdout.trim()) throw errCanceled;
-  return result.stdout.trim();
+  const chosen = platform === 'win32' ? result.stdout : result.stdout.replace(/\r?\n$/, '');
+  if (result.code || !chosen) throw errCanceled;
+  return chosen;
 }

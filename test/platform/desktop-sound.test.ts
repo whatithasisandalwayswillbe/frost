@@ -68,6 +68,19 @@ test('desktop integrations preserve URLs and treat paths as arguments', async ()
     `POSIX path of (choose folder with prompt "Restore \\"to\\"" default location (POSIX file ${JSON.stringify(here)}))`,
     'POSIX path of (choose folder with prompt "Restore to")',
   ]);
+
+  // Picker output ends with a record newline, while spaces and an embedded final newline can
+  // belong to a real POSIX filename. Windows emits its path without a record terminator.
+  for (const platform of ['linux', 'darwin', 'win32'] as const) {
+    const selected = platform === 'win32' ? 'C:\\folder with a space ' : '/folder with a space \n';
+    assert.equal(
+      await pickFolder('title', '', {
+        platform,
+        runner: async () => ({ code: 0, stdout: selected + (platform === 'win32' ? '' : '\n'), stderr: '' }),
+      }),
+      selected,
+    );
+  }
 });
 
 const sine = (hz: number, n: number) =>
@@ -357,6 +370,18 @@ test('the mixer sums voices, clips to full scale, limits each clip and fades a s
   assert.equal(mixed[fade + 1], Math.round(0.08 * 32767));
 });
 
+test('a burst of stolen voices leaves eight playing voices after their short fades', () => {
+  const mixer = new Mixer();
+  const samples = new Float32Array(1000).fill(0.001);
+  for (let i = 0; i < 1000; i++) assert.ok(mixer.add('clip-' + i, samples));
+  const output = int16(mixer.block(200));
+  assert.equal(output[199], Math.round(8 * samples[0] * 32767));
+  assert.equal(samples[0], Math.fround(0.001));
+  assert.equal(mixer.active, true);
+  mixer.block(1000);
+  assert.equal(mixer.active, false);
+});
+
 test('a stream is fed silence from the start, mixes sounds in as it has room and stops when closed', async t => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   // A stream that keeps 50 ms queued, with played counting what the device has used up.
@@ -614,6 +639,10 @@ test('libpulse connects through a polled loop, writes what the server asks for a
   // Room is whatever the server asks for, and a block is written whole for libpulse to copy.
   pulse.setWritable(1764n);
   assert.equal(out.room(), 20);
+  pulse.setWritable(88200n);
+  assert.equal(out.room(), 150);
+  pulse.setWritable(0xffffffffffffffffn);
+  assert.throws(() => out.room(), /could not read sound stream capacity/);
   out.write(Buffer.alloc(882));
   assert.equal(pulse.calls.at(-1), 'write 882 882 null 0 0');
   pulse.setState(3);

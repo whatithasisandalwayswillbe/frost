@@ -3,8 +3,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renameSync, symlinkSync, type BigIntStats } from 'node:fs';
-import { readFile, writeFile, mkdir, readdir, rm, utimes, symlink, stat } from 'node:fs/promises';
+import { renameSync, symlinkSync, statSync, writeFileSync, utimesSync, linkSync, type BigIntStats } from 'node:fs';
+import { readFile, writeFile, mkdir, readdir, rm, utimes, symlink, stat, link } from 'node:fs/promises';
 import path from 'node:path';
 import { fixture, random } from '../support.js';
 import { Engine, RestoreError, newRestoreFolder, partialName, isPartial } from '../../src/engine/index.js';
@@ -430,6 +430,205 @@ test('partial filtering and exclude names and ancestor patterns match recorded r
   assert.ok(!ex.match('/a/node_modules-file'));
 });
 
+test('exclude matching preserves Unicode, classes, escapes and slash boundaries without backtracking', () => {
+  for (const [pattern, name, matches] of [
+    ['a?b', 'a😀b', true],
+    ['a??b', 'a😀b', false],
+    ['[😀-🙏].txt', '😁.txt', true],
+    ['[^a-z]*', '1😀', true],
+    ['[^a-z]*', 'ab', false],
+    ['a*b*c', 'abbc', true],
+    ['a*b*c', 'ac', false],
+    ['a**b', 'a😀b', true],
+    ['a*b', 'a/b', false],
+    ['file[.]txt', 'file.txt', true],
+    ['*.txt', 'file.txt\n', false],
+  ] as const)
+    assert.equal(new Excluder([pattern]).match(name), matches, `${pattern}: ${name}`);
+  if (process.platform !== 'win32') {
+    assert.equal(new Excluder(['a\\*b']).match('a*b'), true);
+    assert.equal(new Excluder(['a\\*b']).match('axxb'), false);
+  }
+  for (const pattern of ['[]', '[z-a]', '[', '[a--b]'])
+    assert.throws(() => new Excluder([pattern]), /invalid exclude pattern/);
+
+  // This failed match explores exponentially many paths in a backtracking glob regex.
+  const hostile = new Excluder(['*a'.repeat(24) + 'b']);
+  for (let i = 0; i < 100; i++) assert.equal(hostile.match('a'.repeat(200)), false);
+});
+
+test('restore rejects destinations changed after verification even with their old modification time', async t => {
+  const f = await fixture(t);
+  await f.write('a', 'saved');
+  await f.write('b', 'saved');
+  const saved = await f.engine.backup({ paths: [f.src] });
+  const target = path.join(f.root, 'target');
+  const options = { target, base: f.src.replaceAll('\\', '/') };
+  await f.engine.restore(saved.snapshot.id, options);
+  const first = path.join(target, 'a');
+  const before = statSync(first);
+  let changed = false;
+  await assert.rejects(
+    f.engine.restore(saved.snapshot.id, {
+      ...options,
+      progress: p => {
+        if (changed || !p.checking || !p.path.endsWith('/b')) return;
+        changed = true;
+        writeFileSync(first, 'wrong');
+        utimesSync(first, before.atime, before.mtime);
+      },
+    }),
+    /destination changed after it was checked/,
+  );
+  assert.equal(changed, true);
+  assert.equal(await readFile(first, 'utf8'), 'wrong');
+  await f.engine.restore(saved.snapshot.id, options);
+  assert.equal(await readFile(first, 'utf8'), 'saved');
+});
+
+test('restore updates matching hardlinked destinations without treating its own metadata as outside writes', async t => {
+  const f = await fixture(t);
+  const first = await f.write('a', 'saved');
+  const second = path.join(f.src, 'b');
+  await link(first, second);
+  const saved = await f.engine.backup({ paths: [f.src] });
+  const target = path.join(f.root, 'target');
+  await mkdir(target);
+  const a = path.join(target, 'a');
+  const b = path.join(target, 'b');
+  await writeFile(a, 'saved');
+  await link(a, b);
+  await utimes(a, new Date('2001-01-01'), new Date('2001-01-01'));
+  const restored = await f.engine.restore(saved.snapshot.id, { target, base: f.src.replaceAll('\\', '/') });
+  assert.equal(restored.files, 2);
+  assert.equal(await readFile(a, 'utf8'), 'saved');
+  assert.equal(await readFile(b, 'utf8'), 'saved');
+  assert.equal((await stat(a, { bigint: true })).mtimeNs, (await stat(first, { bigint: true })).mtimeNs);
+  assert.equal((await stat(b, { bigint: true })).mtimeNs, (await stat(second, { bigint: true })).mtimeNs);
+});
+
+test('restore separates matching hardlinked destinations when their saved metadata differs', async t => {
+  const f = await fixture(t);
+  const first = await f.write('a', 'saved');
+  const second = await f.write('b', 'saved');
+  await utimes(first, new Date('2001-01-01'), new Date('2001-01-01'));
+  await utimes(second, new Date('2002-01-01'), new Date('2002-01-01'));
+  const saved = await f.engine.backup({ paths: [f.src] });
+  const target = path.join(f.root, 'target');
+  await mkdir(target);
+  const a = path.join(target, 'a');
+  const b = path.join(target, 'b');
+  await writeFile(a, 'saved');
+  await link(a, b);
+  const restored = await f.engine.restore(saved.snapshot.id, { target, base: f.src.replaceAll('\\', '/') });
+  assert.equal(restored.files, 2);
+  const aStat = await stat(a, { bigint: true });
+  const bStat = await stat(b, { bigint: true });
+  assert.equal(aStat.mtimeNs, (await stat(first, { bigint: true })).mtimeNs);
+  assert.equal(bStat.mtimeNs, (await stat(second, { bigint: true })).mtimeNs);
+  assert.notEqual(aStat.ino, bStat.ino);
+  assert.equal(await readFile(a, 'utf8'), 'saved');
+  assert.equal(await readFile(b, 'utf8'), 'saved');
+});
+
+test('restore never changes an outside file through a pre-existing hardlinked partial', async t => {
+  const f = await fixture(t);
+  const source = await f.write('a', 'newdata');
+  const saved = await f.engine.backup({ paths: [f.src] });
+  const target = path.join(f.root, 'target');
+  const outside = path.join(f.root, 'outside');
+  await mkdir(target);
+  await writeFile(outside, 'valuable-old-data');
+  await link(outside, path.join(target, partialName(saved.snapshot.id, source.replaceAll('\\', '/'))));
+  await assert.rejects(
+    f.engine.restore(saved.snapshot.id, { target, base: f.src.replaceAll('\\', '/') }),
+    /more than one link/,
+  );
+  assert.equal(await readFile(outside, 'utf8'), 'valuable-old-data');
+  await assert.rejects(stat(path.join(target, 'a')), { code: 'ENOENT' });
+});
+
+test('restore replaces a matching hardlinked destination before changing metadata outside the target', async t => {
+  const f = await fixture(t);
+  const source = await f.write('a', 'saved');
+  await utimes(source, new Date('2001-01-01'), new Date('2001-01-01'));
+  const saved = await f.engine.backup({ paths: [f.src] });
+  const target = path.join(f.root, 'target');
+  const outside = path.join(f.root, 'outside');
+  await mkdir(target);
+  await writeFile(outside, 'saved');
+  await utimes(outside, new Date('2002-01-01'), new Date('2002-01-01'));
+  const before = await stat(outside, { bigint: true });
+  await link(outside, path.join(target, 'a'));
+  const restored = await f.engine.restore(saved.snapshot.id, { target, base: f.src.replaceAll('\\', '/') });
+  assert.equal(restored.files, 1);
+  const outsideAfter = await stat(outside, { bigint: true });
+  const insideAfter = await stat(path.join(target, 'a'), { bigint: true });
+  assert.equal(outsideAfter.mtimeNs, before.mtimeNs);
+  assert.equal(outsideAfter.mode, before.mode);
+  assert.equal(await readFile(outside, 'utf8'), 'saved');
+  assert.equal(insideAfter.mtimeNs, (await stat(source, { bigint: true })).mtimeNs);
+  assert.notEqual(insideAfter.ino, outsideAfter.ino);
+});
+
+test('restore stops before writing again when an active partial gains an outside hardlink', async t => {
+  const f = await fixture(t);
+  const bytes = random(3 << 20);
+  const source = await f.write('a', bytes);
+  const saved = await f.engine.backup({ paths: [f.src] });
+  const target = path.join(f.root, 'target');
+  const outside = path.join(f.root, 'outside');
+  const partial = path.join(target, partialName(saved.snapshot.id, source.replaceAll('\\', '/')));
+  let length = 0;
+  await assert.rejects(
+    f.engine.restore(saved.snapshot.id, {
+      target,
+      base: f.src.replaceAll('\\', '/'),
+      progress: p => {
+        if (length || p.checking || !p.bytes || p.files) return;
+        linkSync(partial, outside);
+        length = statSync(outside).size;
+      },
+    }),
+    /partial file changed|more than one link/,
+  );
+  assert.ok(length > 0);
+  assert.deepEqual(await readFile(outside), bytes.subarray(0, length));
+  await assert.rejects(stat(path.join(target, 'a')), { code: 'ENOENT' });
+});
+
+test('restore detects changes to a partial file during download and resumes safely', async t => {
+  const f = await fixture(t);
+  const bytes = random(3 << 20);
+  await f.write('a', bytes);
+  const saved = await f.engine.backup({ paths: [f.src] });
+  const target = path.join(f.root, 'target');
+  await mkdir(target);
+  await writeFile(path.join(target, 'a'), 'original');
+  const partial = path.join(target, partialName(saved.snapshot.id, f.src.replaceAll('\\', '/') + '/a'));
+  const options = { target, base: f.src.replaceAll('\\', '/') };
+  let changed = false;
+  await assert.rejects(
+    f.engine.restore(saved.snapshot.id, {
+      ...options,
+      progress: p => {
+        if (changed || p.checking || !p.bytes || p.files) return;
+        changed = true;
+        const before = statSync(partial);
+        // Windows locks reject writes to the open partial, but the directory entry can be replaced.
+        if (process.platform === 'win32') renameSync(partial, partial + '.moved');
+        writeFileSync(partial, Buffer.alloc(before.size, 255));
+        if (process.platform !== 'win32') utimesSync(partial, before.atime, before.mtime);
+      },
+    }),
+    /partial file changed while it was restored/,
+  );
+  assert.equal(changed, true);
+  assert.equal(await readFile(path.join(target, 'a'), 'utf8'), 'original');
+  await f.engine.restore(saved.snapshot.id, options);
+  assert.deepEqual(await readFile(path.join(target, 'a')), bytes);
+});
+
 // Uploading the snapshot header fails after the file and tree chunks are stored. Those chunks
 // stay recorded so the retry uploads nothing new, but no snapshot or file entry is published.
 test('partial metadata upload failures keep successful chunks durable and never publish a snapshot', async t => {
@@ -706,23 +905,13 @@ test('worker-computed chunk IDs keep file order and dedupe repeated content', as
   assert.deepEqual(await readFile(path.join(target, 'big')), bytes);
 });
 
-// mtime keeps the last date string and strips zeros by hand. It must still match the plain formula
-// for times before 1970, whole seconds, trailing zeros, far-future years and repeated seconds.
-test('modification times format exactly like the plain formula', () => {
-  const plain = (ns: bigint) => {
-    let seconds = ns / 1_000_000_000n;
-    let nanos = ns % 1_000_000_000n;
-    if (nanos < 0) {
-      seconds--;
-      nanos += 1_000_000_000n;
-    }
-    const date = new Date(Number(seconds * 1000n)).toISOString().slice(0, 19);
-    const frac = String(nanos).padStart(9, '0').replace(/0+$/, '');
-    return date + (frac ? '.' + frac : '') + 'Z';
-  };
+// Round trips exercise seconds and nanoseconds independently of the formatter's string operations.
+test('modification times roundtrip before 1970 and across expanded years without losing precision', () => {
   const values = [0n, 1n, -1n, 999_999_999n, 1_000_000_000n, -1_000_000_000n, -1_500_000_000n];
-  for (const base of [1_700_000_000n, 1_700_000_000n, 1_700_000_001n, 253_402_300_800n, -62_135_596_800n])
+  for (const base of [1_700_000_000n, 1_700_000_000n, 1_700_000_001n, 253_402_300_845n, -62_198_755_155n])
     for (const nanos of [0n, 1n, 10n, 100_000_000n, 120_000_000n, 123_456_789n, 999_999_999n])
       values.push(base * 1_000_000_000n + nanos);
-  for (const ns of values) assert.equal(mtime({ mtimeNs: ns } as BigIntStats), plain(ns), String(ns));
+  for (const ns of values) assert.equal(timeValue(mtime({ mtimeNs: ns } as BigIntStats)), ns, String(ns));
+  assert.equal(mtime({ mtimeNs: 253_402_300_845_123_456_789n } as BigIntStats), '+010000-01-01T00:00:45.123456789Z');
+  assert.equal(mtime({ mtimeNs: -62_198_755_155_000_000_000n } as BigIntStats), '-000001-01-01T00:00:45Z');
 });

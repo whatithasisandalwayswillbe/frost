@@ -59,6 +59,7 @@ const sequences: Record<string, string> = {
   '\x1b[1;3D': 'alt+left',
   '\x1b[1;3C': 'alt+right',
 };
+const sequenceKeys = Object.keys(sequences);
 
 // Turns raw terminal input into key events. Reads can split a character, an escape sequence
 // or a paste anywhere, so unfinished input waits in pending for the next read.
@@ -96,7 +97,7 @@ export class InputDecoder {
       }
 
       if (this.pending[0] === '\x1b') {
-        const exact = Object.keys(sequences).find(s => this.pending.startsWith(s));
+        const exact = sequenceKeys.find(s => this.pending.startsWith(s));
         if (exact) {
           out.push({ key: sequences[exact], alt: sequences[exact].startsWith('alt+') });
           this.pending = this.pending.slice(exact.length);
@@ -106,7 +107,7 @@ export class InputDecoder {
         // Wait for more input after a partial sequence. A lone escape is left for flushEscape.
         if (
           this.pending === '\x1b' ||
-          Object.keys(sequences).some(s => s.startsWith(this.pending)) ||
+          sequenceKeys.some(s => s.startsWith(this.pending)) ||
           '\x1b[200~'.startsWith(this.pending)
         )
           break;
@@ -120,7 +121,7 @@ export class InputDecoder {
         }
 
         // Escape followed by anything else is that key with alt held.
-        const r = [...this.pending.slice(1)][0];
+        const r = String.fromCodePoint(this.pending.codePointAt(1)!);
         out.push({ key: 'alt+' + (r === '\x7f' ? 'backspace' : r === '\r' ? 'enter' : r), alt: true });
         this.pending = this.pending.slice(1 + r.length);
         continue;
@@ -128,7 +129,7 @@ export class InputDecoder {
 
       // Anything else is one ordinary character. Control characters get key names, and printable
       // ones carry their text.
-      const r = [...this.pending][0];
+      const r = String.fromCodePoint(this.pending.codePointAt(0)!);
       this.pending = this.pending.slice(r.length);
       const c = r.codePointAt(0)!;
       let key: string;

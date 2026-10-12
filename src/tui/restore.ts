@@ -12,6 +12,7 @@ import { FileTree } from './tree.js';
 import { Form, inputBox } from './input.js';
 import {
   style,
+  printable,
   pad,
   padPlain,
   truncate,
@@ -197,7 +198,7 @@ function landing(rs: RestoreState, w: number): string[] {
   const line = (s: string) => pad(s, w);
   const lines = [
     line(style('text', shortPath(rs.picked, w))),
-    line(style('faded', '└─ ') + style('bold', path.basename(rs.chosen) + '/') + style('dim', '  new')),
+    line(style('faded', '└─ ') + style('bold', printable(path.basename(rs.chosen)) + '/') + style('dim', '  new')),
   ];
   let tops = rs.tops;
   let more = 0;
@@ -206,7 +207,9 @@ function landing(rs: RestoreState, w: number): string[] {
     tops = tops.slice(0, 3);
   }
   tops.forEach((t, i) =>
-    lines.push(line(style('faded', '   ' + (i === tops.length - 1 && !more ? '└─ ' : '├─ ')) + style('text', t))),
+    lines.push(
+      line(style('faded', '   ' + (i === tops.length - 1 && !more ? '└─ ' : '├─ ')) + style('text', printable(t))),
+    ),
   );
   if (more) lines.push(line(style('faded', '   └─ ') + style('dim', more + ' more')));
   return lines;

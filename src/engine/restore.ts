@@ -16,6 +16,7 @@ import {
   sameFile,
   type RootDirectory,
   type RootFile,
+  type RootStat,
 } from '../platform/fs-root.js';
 import { slash } from './exclude.js';
 import {
@@ -31,6 +32,14 @@ import {
 
 // A new restore folder holds this locked marker until the restore completes.
 const marker = '.frost-restore';
+
+// Reading and later reusing a file must refer to the same unchanged contents, including writes whose
+// modification time was put back. Access time and permission changes don't establish content equality.
+function sameContents(a: RootStat, b: RootStat): boolean {
+  return (
+    sameFile(a, b) && a.nlink === b.nlink && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs
+  );
+}
 
 // The partial file's name depends only on the snapshot and path, so an interrupted restore finds it again.
 export const partialName = (id: string, p: string): string =>
@@ -217,6 +226,7 @@ export async function restore(
   let activeParent: Parent | undefined;
   let activeName = '';
   let activeLength = 0;
+  let activeStat: RootStat | undefined;
   let completed = false;
   let failed = false;
 
@@ -337,6 +347,7 @@ export async function restore(
         haveLen: 0,
         partial: undefined as RootFile | undefined,
         parent: undefined as Parent | undefined,
+        checked: undefined as RootStat | undefined,
       }));
 
     const progress: RestoreProgress = {
@@ -354,7 +365,11 @@ export async function restore(
 
     // Chunks an existing file and counts its leading chunks that match the snapshot's keyed IDs. Names
     // alone are never trusted.
-    const matched = async (file: RootFile, f: File): Promise<{ n: number; len: number }> => {
+    const matched = async (
+      file: RootFile,
+      f: File,
+      before: RootStat,
+    ): Promise<{ n: number; len: number; stat: RootStat }> => {
       let n = 0;
       let len = 0;
       async function* input() {
@@ -376,7 +391,8 @@ export async function restore(
         progress.bytes += b.length;
         report(f.path);
       }
-      return { n, len };
+      const stat = file.stat();
+      return sameContents(before, stat) ? { n, len, stat } : { n: 0, len: 0, stat };
     };
 
     // Closes and deletes the partial file being written.
@@ -403,9 +419,18 @@ export async function restore(
               let file: RootFile | undefined;
               try {
                 file = parent.root.open(name, { read: true });
-                if (sameFile(st, file.stat())) {
-                  const have = await matched(file, r.f);
-                  r.done = have.n === (r.f.chunks?.length ?? 0) && have.len === (r.f.size ?? 0);
+                const opened = file.stat();
+                if (sameFile(st, opened)) {
+                  const have = await matched(file, r.f, opened);
+                  r.done =
+                    have.stat.size === (r.f.size ?? 0) &&
+                    have.n === (r.f.chunks?.length ?? 0) &&
+                    have.len === (r.f.size ?? 0) &&
+                    // Updating linked metadata would also change an alias outside the target. A fresh
+                    // partial separates those destinations; matching metadata needs no writes.
+                    (have.stat.nlink === 1 ||
+                      ((have.stat.mode & 0o777) === (r.f.mode & 0o777) && have.stat.mtimeNs === timeValue(r.f.mtime)));
+                  if (r.done) r.checked = have.stat;
                 }
               } catch {
                 check(signal);
@@ -419,14 +444,18 @@ export async function restore(
             if (!ps) continue;
             if (!ps.isFile() || ps.isSymbolicLink())
               throw new Error(`restoring ${r.f.path}: ${namePartial} isn't a regular file`);
+            if (ps.nlink !== 1) throw new Error(`restoring ${r.f.path}: ${namePartial} has more than one link`);
             r.partial = parent.root.open(namePartial, { read: true, write: true });
             lockFile(r.partial);
-            if (!sameFile(ps, r.partial.stat()))
+            const opened = r.partial.stat();
+            if (!sameFile(ps, opened) || opened.nlink !== 1)
               throw new Error(`restoring ${r.f.path}: ${namePartial} changed while it was opened`);
             r.parent = parent;
-            const have = await matched(r.partial, r.f);
+            const have = await matched(r.partial, r.f, opened);
+            if (have.stat.nlink !== 1) throw new Error(`restoring ${r.f.path}: ${namePartial} has more than one link`);
             r.have = have.n;
             r.haveLen = have.len;
+            r.checked = have.stat;
           } finally {
             if (r.parent !== parent) parent.close();
           }
@@ -461,8 +490,14 @@ export async function restore(
               });
             r.partial = undefined;
             lockFile(active);
-            active.truncate(r.haveLen);
+            const current = active.stat();
+            if (current.nlink !== 1 || (r.checked && !sameContents(r.checked, current)))
+              throw new Error(`restoring ${r.f.path}: the partial file changed after it was checked`);
             activeLength = r.haveLen;
+            if (current.size !== activeLength) {
+              active.truncate(activeLength);
+              activeStat = active.stat();
+            } else activeStat = current;
             progress.bytes += r.haveLen;
             need = (r.f.chunks?.length ?? 0) - r.have;
           }
@@ -473,14 +508,22 @@ export async function restore(
             let file: RootFile | undefined;
             try {
               file = parent.root.open(path.basename(r.out), { read: true });
-              file.chmod(r.f.mode & 0o777);
-              file.utimes(ns, ns);
+              const current = file.stat();
+              if (!sameContents(r.checked!, current))
+                throw new Error(`restoring ${r.f.path}: the destination changed after it was checked`);
+              const mode = r.f.mode & 0o777;
+              const changedMode = (current.mode & 0o777) !== mode;
+              const changedTime = current.mtimeNs !== ns;
+              if (changedMode) file.chmod(mode);
+              if (changedTime) file.utimes(ns, ns);
             } finally {
               file?.close();
               parent.close();
             }
             progress.bytes += r.f.size ?? 0;
           } else {
+            if (!sameContents(activeStat!, active!.stat()))
+              throw new Error(`restoring ${r.f.path}: the partial file changed while it was restored`);
             if (activeLength !== (r.f.size ?? 0)) {
               discard();
               throw new Error(`restoring ${r.f.path}: size mismatch`);
@@ -488,6 +531,10 @@ export async function restore(
             active!.chmod(r.f.mode & 0o777);
             active!.utimes(ns, ns);
             active!.sync();
+            const final = active!.stat();
+            const named = existing(activeParent!.root, activeName);
+            if (final.nlink !== 1 || final.size !== activeLength || !named || !sameFile(final, named))
+              throw new Error(`restoring ${r.f.path}: the partial file changed while it was restored`);
             active!.close();
             active = undefined;
             // A folder at the destination gets a clear error. POSIX refuses to rename a file over a folder,
@@ -527,6 +574,8 @@ export async function restore(
         async (_i, data) => {
           check(signal);
           const r = regular[k];
+          if (!sameContents(activeStat!, active!.stat()))
+            throw new Error(`restoring ${r.f.path}: the partial file changed while it was restored`);
           if (data.length > (r.f.size ?? 0) - activeLength) {
             discard();
             throw new Error(`restoring ${r.f.path}: data exceeds recorded size`);
@@ -539,6 +588,8 @@ export async function restore(
             written += count;
           }
           activeLength += data.length;
+          activeStat = active!.stat();
+          if (activeStat.nlink !== 1) throw new Error(`restoring ${r.f.path}: the partial file has more than one link`);
           need--;
           progress.bytes += data.length;
           res.bytes = progress.bytes;

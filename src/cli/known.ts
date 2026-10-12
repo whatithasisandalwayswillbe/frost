@@ -6,6 +6,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import * as config from '../core/config.js';
 import { location, type Backend } from '../core/storage.js';
+import { frostCommand } from './command.js';
 
 // `where` identifies the storage location, and `shown` is how it's printed.
 interface Known {
@@ -79,7 +80,7 @@ function changedStorage(a: config.Storage, b: config.Storage): { key: string; wa
   return result;
 }
 
-// Quotes a value for a command the user can paste, if it's empty or has spaces or quotes in it.
+// Quotes a setting value for the comparison text, if it's empty or has spaces or quotes in it.
 const quoteValue = (v: string): string => (!v || /[ \t'"]/.test(v) ? JSON.stringify(v) : v);
 
 // Explains where the backups might be. If the repository is missing from where it was last opened, it was
@@ -100,9 +101,15 @@ function storageHint(k: Known, s: config.Storage, b: Backend, missing: boolean):
   // The quickest way back is the command that undoes the change.
   let back = 'frost init, pointed back at ' + k.shown;
   if (k.storage?.backend === s.backend) {
-    if (changed.length === 1) back = `frost config set ${changed[0].key} ${quoteValue(changed[0].was)}`;
-    else if (changed.length > 1)
+    if (changed.length) {
       back = 'frost config edit, and set ' + changed.map(c => c.key + ' to ' + quoteValue(c.was)).join(' and ');
+      if (changed.length === 1)
+        try {
+          back = frostCommand(['config', 'set', changed[0].key, changed[0].was]);
+        } catch {
+          // Values the platform shell can't preserve use the existing editor hint.
+        }
+    }
   }
   lines.push(
     '',

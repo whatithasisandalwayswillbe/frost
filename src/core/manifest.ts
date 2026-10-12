@@ -104,7 +104,9 @@ export class Manifest {
       // Journals over 1 GiB are refused, and a non-empty journal must start with `{`.
       const name = path.basename(file);
       handle = directory.open(name, { read: true, write: true, create: true, mode: 0o600 });
-      if (handle.stat().size > 1024 * 1024 * 1024) throw new Error('manifest cache exceeds 1 GiB');
+      const stat = handle.stat();
+      if (stat.nlink !== 1) throw new Error('manifest cache must have one hardlink');
+      if (stat.size > 1024 * 1024 * 1024) throw new Error('manifest cache exceeds 1 GiB');
       let data = readAll(handle, 1024 * 1024 * 1024);
       if (data.length && data[0] !== 123)
         throw new Error('manifest cache format is unsupported; use a separate cache path');
@@ -207,6 +209,7 @@ export class Manifest {
       if (this.#poison) throw this.#poison;
       try {
         if (this.#journalBytes >= this.#compactAt) await this.#compact();
+        if (this.handle.stat().nlink !== 1) throw new Error('manifest cache must have one hardlink');
         const record = { format: 1, sequence: this.#sequence + 1, operation, value: clean };
         const raw = JSON.stringify({ ...record, checksum: hash(JSON.stringify(record)) }) + '\n';
 
@@ -297,10 +300,6 @@ export class Manifest {
 
   chunkCount(): number {
     return this.#closed ? 0 : this.#chunks.size;
-  }
-
-  count(): number {
-    return this.chunkCount();
   }
 
   // Records uploaded chunks and their sizes. Input is checked before anything is queued.

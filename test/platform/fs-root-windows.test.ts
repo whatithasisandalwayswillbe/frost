@@ -101,6 +101,27 @@ test(
   },
 );
 
+test(
+  'Windows native link counts identify a hardlink outside the retained root',
+  { skip: process.platform !== 'win32' },
+  async t => {
+    const f = fixture(t);
+    fs.linkSync(path.join(f.outside, 'sentinel'), path.join(f.target, 'linked'));
+    const { windowsBackend } = await import('../../src/platform/fs-root-windows.js');
+    const root = windowsBackend.openRoot(f.target);
+    const file = root.open('linked', { read: true });
+    try {
+      assert.equal(file.stat().nlink, 2);
+      assert.equal(root.lstat('linked').nlink, 2);
+      assert.equal(file.stat().nlink, fs.statSync(path.join(f.outside, 'sentinel')).nlink);
+      assert.equal(fs.readFileSync(path.join(f.outside, 'sentinel'), 'utf8'), 'unchanged');
+    } finally {
+      file.close();
+      root.close();
+    }
+  },
+);
+
 // Here the open folder itself becomes a junction. Creation and renames through it must fail, and a
 // metadata change may fail or not, but it must never reach `outside`.
 test(
@@ -188,6 +209,33 @@ test(
     // A closed handle refuses further use.
     assert.throws(() => file.writeFile(''));
     assert.throws(() => file.lock(true));
+  },
+);
+
+test(
+  'Windows native change time agrees with Node after content and timestamp changes',
+  { skip: process.platform !== 'win32' },
+  async t => {
+    const f = fixture(t);
+    const filename = path.join(f.target, 'file');
+    fs.writeFileSync(filename, 'before');
+    fs.utimesSync(filename, 1_000_000_000, 1_000_000_000);
+    const { windowsBackend } = await import('../../src/platform/fs-root-windows.js');
+    const root = windowsBackend.openRoot(f.target);
+    try {
+      const before = root.lstat('file');
+      assert.equal(before.ctimeNs, fs.statSync(filename, { bigint: true }).ctimeNs);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      fs.writeFileSync(filename, 'after!');
+      fs.utimesSync(filename, 1_000_000_000, 1_000_000_000);
+      const after = root.lstat('file');
+      assert.equal(after.size, before.size);
+      assert.equal(after.mtimeNs, before.mtimeNs);
+      assert.equal(after.ctimeNs, fs.statSync(filename, { bigint: true }).ctimeNs);
+      assert.ok(after.ctimeNs > before.ctimeNs);
+    } finally {
+      root.close();
+    }
   },
 );
 

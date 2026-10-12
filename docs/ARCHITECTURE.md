@@ -82,7 +82,7 @@ Decompressed objects are capped at 256 MiB. Chunk downloads are capped at 8 MiB 
 
 `manifest-<repo>.jsonl` in the cache directory holds uploaded chunk IDs, per-file metadata, snapshot headers and backup, verification and comparison state. Each journal transaction carries a format, sequence number and SHA-256 checksum. Transactions are flushed before they become visible in memory. A write failure stops later mutations.
 
-Opening the journal discards an incomplete final line. A damaged complete transaction fails closed and asks for a cache rebuild. Compaction writes and flushes a fresh journal before replacing the old one through the held directory handle. Journals over 1 GiB are refused.
+Opening the journal discards an incomplete final line. A damaged complete transaction fails closed and asks for a cache rebuild. Compaction writes and flushes a fresh journal before replacing the old one through the held directory handle. Journals over 1 GiB or with multiple hardlinks are refused, and appending rechecks the link count.
 
 A persistent `.lock` file is locked by the operating system for the manifest's lifetime. Marker contents don't establish ownership. Locks release when the handle closes or the process exits; unavailable kernel locking fails closed. Separate cache folders and other machines have separate locks, so repository metadata still needs conditional creates.
 
@@ -97,6 +97,8 @@ The tree, selected paths and destination types are checked before writing. Chunk
 Each regular file is written to a private `.frost-partial-<hash>` beside its destination, checked against its recorded size, flushed and renamed into place. The old file isn't deleted before replacement. Symlinks are created after regular files; directory modes and times are applied last, deepest first. Restores are atomic per file, not across the whole selection.
 
 A new restore folder holds a `.frost-restore` marker until completion. The marker and each partial file are locked while in use. A resumed restore checks existing bytes by chunking them and comparing keyed IDs, skips complete files and retains matching leading chunks in partial files. Names alone are never trusted. Overwrite restores use the same checks.
+
+Partial files must have one hardlink. A matching destination with multiple hardlinks is replaced before changing its permissions or timestamps, so another name for that file stays untouched. Reusing checked bytes also requires unchanged file identity, size, modification time and change time.
 
 ### Native filesystem operations
 

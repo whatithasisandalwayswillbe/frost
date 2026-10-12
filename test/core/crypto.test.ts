@@ -67,6 +67,15 @@ test('BIP39 official vectors and normalization', () => {
   assert.throws(() => encode(Buffer.alloc(1)));
 });
 
+test('invalid recovery words report only their position', () => {
+  const phrase = Array(24).fill('abandon');
+  phrase[7] = 'private-recovery-input';
+  assert.throws(
+    () => decode(phrase.join(' ')),
+    error => error instanceof Error && error.message === 'bip39: word 8 is not in the wordlist' && !error.cause,
+  );
+});
+
 test('key derivation matches golden output', () => {
   const key = Key.fromMaster(Buffer.alloc(32));
   assert.equal(key.fingerprint(), fixture.fingerprint);

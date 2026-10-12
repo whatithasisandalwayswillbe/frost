@@ -1,5 +1,5 @@
-// Storage clients. A backend only moves sealed bytes; it never sees keys or plaintext. This
-// file holds the backend contract, the shared HTTP transport and the S3 and Permafrost clients.
+// Storage clients for encrypted backup objects and setup probes. This file holds the backend
+// contract, the shared HTTP transport and the S3 and Permafrost clients.
 
 import { createHash, createHmac } from 'node:crypto';
 import http from 'node:http';
@@ -189,10 +189,10 @@ export class PermafrostBackend implements Backend {
     try {
       this.#base = new URL(base.replace(/\/$/, ''));
     } catch {
-      throw new Error(`permafrost: invalid url ${JSON.stringify(base)}`);
+      throw new Error('permafrost: invalid url');
     }
     if (!this.#base.host || this.#base.username || this.#base.password || this.#base.search || this.#base.hash)
-      throw new Error(`permafrost: invalid url ${JSON.stringify(base)}`);
+      throw new Error('permafrost: invalid url');
     if (this.#base.protocol !== 'https:' && !(this.#base.protocol === 'http:' && isLoopback(this.#base.hostname)))
       throw new Error('permafrost: url must use https');
     if (!token) throw new Error('permafrost: token is required');

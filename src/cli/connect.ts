@@ -16,8 +16,7 @@ export function phraseKey(phrase: string): Key {
   const parts = phrase.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (parts.length !== 24) throw new Error(`that's ${parts.length} words, a recovery phrase has 24`);
   for (let i = 0; i < parts.length; i++)
-    if (!words.includes(parts[i]))
-      throw new Error(`word ${i + 1}, ${JSON.stringify(parts[i])}, isn't a recovery phrase word. Check its spelling`);
+    if (!words.includes(parts[i])) throw new Error(`word ${i + 1} isn't a recovery phrase word. Check its spelling`);
   try {
     return Key.fromPhrase(parts.join(' '));
   } catch (e) {

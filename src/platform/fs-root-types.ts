@@ -7,7 +7,9 @@ export interface RootStat {
   size: number;
   mode: number;
   uid: number;
+  nlink: number;
   mtimeNs: bigint;
+  ctimeNs: bigint;
   isFile(): boolean;
   isDirectory(): boolean;
   isSymbolicLink(): boolean;

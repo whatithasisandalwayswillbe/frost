@@ -62,9 +62,9 @@ frost protects against:
 - An attacker who gets a copy of the bucket.
 - Someone on the network between you and the storage. Connections use TLS, and every object is authenticated anyway. TLS is off for an `http://` S3 endpoint, an S3 endpoint without a scheme when `storage.s3.insecure` is enabled, or an `http://` Permafrost URL on localhost. An explicit S3 scheme takes precedence over `storage.s3.insecure`.
 - Tampering, truncation or swapping of stored objects, which frost detects and never silently accepts.
-- A restore escaping its target through `..` paths or symlinked parents. Restores retain native directory handles and check every path first.
+- A restore escaping its target through `..` paths, symlinked parents or hardlinked partial files. Restores retain native directory handles and check every path first. [ARCHITECTURE.md](ARCHITECTURE.md#restore) describes the file checks.
 - An in-place restore being redirected through another user's link. POSIX ancestor links and their parents must belong to root or you, with protected parent permissions. Windows refuses ancestor links and junctions.
-- Corrupted, swapped or tampered frost downloads. Each release's `checksums.txt` is signed with the release key (`checksums.txt.sig`). The install script checks that signature against the public key in the repository (`install/release-signing.pub`), then checks the archive against the checksums. `frost update` does the same, as [Updates](#updates) describes.
+- Corrupted, swapped or tampered frost downloads. Each release's `checksums.txt` is signed with the release key (`checksums.txt.sig`). The installers and the `getfrost` npm package check that signature against the release key (`install/release-signing.pub`), then check the archive against the checksums. `frost update` does the same. [Updates](#updates) lists how each one checks.
 
 frost doesn't protect against:
 
@@ -125,7 +125,7 @@ Restore replaces files one at a time, after checking their data and size. If a l
 
 ## Verifying a download by hand
 
-The install script does this for you. To check an archive yourself, download it with `checksums.txt` and `checksums.txt.sig` from the same release, and [`install/release-signing.pub`](../install/release-signing.pub) from the repository. Set `archive` to the downloaded filename, then run:
+The installers do this for you. To check an archive yourself, download it with `checksums.txt` and `checksums.txt.sig` from the same release, and [`install/release-signing.pub`](../install/release-signing.pub) from the repository. Set `archive` to the downloaded filename, then run:
 
 ```sh
 (

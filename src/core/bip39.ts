@@ -40,9 +40,9 @@ export function decode(mnemonic: string): Buffer {
     throw new Error(`bip39: expected 12 to 24 words, got ${list.length}`);
 
   let value = 0n;
-  for (const word of list) {
-    const index = indexes.get(word);
-    if (index === undefined) throw new Error(`bip39: ${JSON.stringify(word)} is not in the wordlist`);
+  for (let i = 0; i < list.length; i++) {
+    const index = indexes.get(list[i]);
+    if (index === undefined) throw new Error(`bip39: word ${i + 1} is not in the wordlist`);
     value = (value << 11n) | BigInt(index);
   }
 

@@ -5,7 +5,7 @@ import * as config from '../core/config.js';
 import { Repo, errWrongKey } from '../core/repo.js';
 import { Context, errNoKey } from './context.js';
 import { phraseKey } from './connect.js';
-import { Format } from './format.js';
+import { Format, printable } from './format.js';
 import { requireConfirmation } from './prompt.js';
 
 // Lays the words out in four columns, numbered down each column.
@@ -73,13 +73,13 @@ export async function runKey(ctx: Context, action: string): Promise<void> {
       const b = ctx.hooks.backend(cfg.storage);
       try {
         await Repo.open(b, key, ctx.signal);
-        p.ok('opens the repository at ' + b);
+        p.ok('opens the repository at ' + printable(String(b)));
       } catch (err) {
         if (err === errWrongKey) {
-          p.fail("doesn't open the repository at " + b);
+          p.fail("doesn't open the repository at " + printable(String(b)));
           throw new Error("key doesn't match");
         }
-        p.warn("couldn't check the repository: " + (err as Error).message);
+        p.warn("couldn't check the repository: " + f.errorText(err));
         throw err;
       }
     }
@@ -121,7 +121,7 @@ export async function runKey(ctx: Context, action: string): Promise<void> {
       } catch (err) {
         throw new Error(`this phrase can't open ${b}: ${(err as Error).message}`);
       }
-      p.ok('opens the repository at ' + b);
+      p.ok('opens the repository at ' + printable(String(b)));
     } else p.line(f.dim("No config yet, so the phrase wasn't checked against any storage. Run `frost init` next."));
 
     if (local) {

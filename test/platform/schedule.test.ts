@@ -4,7 +4,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { link, lstat, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -23,6 +24,7 @@ import {
   cronSpec,
 } from '../../src/platform/schedule.js';
 import type { Runner } from '../../src/platform/command.js';
+import { openRoot } from '../../src/platform/fs-root.js';
 
 const job = { binary: '/usr/local/bin/frost', every: 6 * hour, logFile: '/home/me/.cache/frost/frost.log' };
 
@@ -83,18 +85,64 @@ test('signed runtime and script remain separate scheduler arguments', () => {
   assert.match(cronLine(j), /'\/app\/runtime\/bin\/node' '\/app\/launch.mjs' backup --scheduled/);
   assert.match(taskCommand(j).args, /^"\/app\/launch.mjs" backup --scheduled/);
 });
-// systemd expands % specifiers and $ variables, and cron treats % as a newline, so each must be
-// escaped. A value that looks like a flag or a shell command stays one literal argument.
+// systemd expands % specifiers everywhere and $ variables in arguments, but not in the executable path.
+// The : prefix that turns substitution off needs systemd 242, so units don't use it. Cron treats % as a
+// newline. A value that looks like a flag or a shell command stays one literal argument.
 test('systemd and cron escape substitutions in paths', () => {
   const j = { ...job, binary: '/path/100%/$HOME/frost', configDir: '/config/%h/$USER' };
-  assert.match(systemdUnits(j).service, /100%%\/\$\$HOME/);
-  assert.match(systemdUnits(j).service, /%%h\/\$\$USER/);
-  assert.match(cronLine(j), /100\\%/);
+  assert.match(systemdUnits(j).service, /ExecStart="\/path\/100%%\/\$HOME\/frost" /);
+  assert.match(systemdUnits(j).service, /"\/config\/%%h\/\$\$USER"/);
+  assert.match(cronLine(j), /100'\\%'/);
 
   const literal = { ...job, script: 'backup', configDir: '--name; $(touch file)' };
   assert.match(systemdUnits(literal).service, /"backup" backup --scheduled --config-dir "--name; \$\$\(touch file\)"/);
   assert.match(cronLine(literal), /'backup' backup --scheduled --config-dir '--name; \$\(touch file\)'/);
   assert.match(taskCommand(literal).args, /^"backup" backup --scheduled --config-dir "--name; \$\(touch file\)"/);
+});
+
+// Cronie's command parser tracks backslashes before the shell reads quotes. An unescaped % ends
+// the command; a backslash is removed only when it escapes %. Other backslashes survive unchanged.
+function cronCommand(line: string): string {
+  const source = line.replace(/^(?:\S+\s+){5}/, '');
+  let command = '';
+  let escaped = false;
+  for (const c of source) {
+    if (escaped) {
+      command += c === '%' ? c : '\\' + c;
+      escaped = false;
+    } else if (c === '\\') escaped = true;
+    else if (c === '%') throw new Error('cron split the command at an unescaped percent');
+    else command += c;
+  }
+  return command + (escaped ? '\\' : '');
+}
+
+test('cron keeps literal percent signs after any number of path backslashes', () => {
+  for (const slashes of ['', '\\', '\\\\', '\\\\\\']) {
+    const value = "/name' $HOME " + slashes + '%part';
+    const j = { binary: value, script: value, configDir: value, cacheDir: value, logFile: value, every: hour };
+    const command = cronCommand(cronLine(j));
+    assert.ok(command.includes(slashes + "'%"));
+    if (process.platform !== 'win32') {
+      // Parse every generated path as a shell argument without executing it. Treat the log path
+      // as one more argument instead of redirecting to it; no filesystem or scheduler is touched.
+      const parsed = execFileSync('/bin/sh', [
+        '-c',
+        'set -- ' + command.replace(' >> ', ' ') + '\nprintf \'%s\\0\' "$@"',
+      ]);
+      assert.deepEqual(parsed.toString().split('\0').slice(0, -1), [
+        value,
+        value,
+        'backup',
+        '--scheduled',
+        '--config-dir',
+        value,
+        '--cache-dir',
+        value,
+        value,
+      ]);
+    }
+  }
 });
 // Windows command lines double backslashes only before a quote, so a trailing backslash in a
 // quoted path becomes two. The task runs as the signed-in user with least privilege.
@@ -156,6 +204,87 @@ test('scheduler tests never run the real scheduler', async t => {
   await assert.rejects(scheduler.install({ ...job, binary: 'bad\npath' }), /line breaks/);
   await assert.rejects(scheduler.install({ ...job, every: 1 }), /at least an hour/);
 });
+
+async function alias(source: string, destination: string, kind: 'hardlink' | 'symlink'): Promise<void> {
+  if (kind === 'hardlink') return link(source, destination);
+  const directory = await openRoot(path.dirname(destination));
+  try {
+    directory.symlink(source, path.basename(destination));
+  } finally {
+    directory.close();
+  }
+}
+
+for (const platform of ['linux', 'darwin'] as const)
+  for (const kind of ['hardlink', 'symlink'] as const)
+    test(`${platform} scheduler definitions replace ${kind} aliases without writing outside targets`, async t => {
+      const base = await mkdtemp(path.join(os.tmpdir(), 'frost-schedule-links-'));
+      t.after(() => rm(base, { recursive: true, force: true }));
+      const home = path.join(base, 'home');
+      const directory =
+        platform === 'linux'
+          ? path.join(home, '.config', 'systemd', 'user')
+          : path.join(home, 'Library', 'LaunchAgents');
+      await mkdir(directory, { recursive: true });
+      const units = systemdUnits(job);
+      const definitions =
+        platform === 'linux'
+          ? [
+              ['frost-backup.service', units.service],
+              ['frost-backup.timer', units.timer],
+            ]
+          : [['io.github.whatithasisandalwayswillbe.frost.plist', launchdPlist(job)]];
+      for (const [name] of definitions) {
+        const outside = path.join(base, name);
+        await writeFile(outside, 'outside sentinel');
+        await alias(outside, path.join(directory, name), kind);
+      }
+      const calls: string[] = [];
+      const runner: Runner = async (command, args) => {
+        calls.push(command);
+        return { code: 0, stdout: args.includes('--property=Linger') ? 'yes\n' : '', stderr: '' };
+      };
+      await new Scheduler({ platform, home, env: {}, uid: 123, runner }).install(job);
+      for (const [name, expected] of definitions) {
+        assert.equal(await readFile(path.join(base, name), 'utf8'), 'outside sentinel');
+        assert.equal(await readFile(path.join(directory, name), 'utf8'), expected);
+        const stat = await lstat(path.join(directory, name));
+        assert.equal(stat.isSymbolicLink(), false);
+        assert.equal(stat.nlink, 1);
+        if (process.platform !== 'win32') assert.equal(stat.mode & 0o777, 0o644);
+      }
+      assert.ok(calls.includes(platform === 'linux' ? 'systemctl' : 'launchctl'));
+      assert.deepEqual((await readdir(directory)).sort(), definitions.map(([name]) => name).sort());
+    });
+
+for (const kind of ['hardlink', 'symlink'] as const)
+  test(`systemd rollback replaces a swapped ${kind} timer without changing its target`, async t => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'frost-systemd-rollback-links-'));
+    t.after(() => rm(home, { recursive: true, force: true }));
+    const timer = path.join(home, '.config', 'systemd', 'user', 'frost-backup.timer');
+    const outside = path.join(home, 'outside');
+    const original = 'outside sentinel\n' + lingerMarker + '\n';
+    await writeFile(outside, original);
+    const calls: string[][] = [];
+    const runner: Runner = async (_command, args) => {
+      calls.push(args);
+      if (args.includes('daemon-reload')) {
+        await unlink(timer);
+        await alias(outside, timer, kind);
+        return { code: 1, stdout: '', stderr: 'registration failed' };
+      }
+      return { code: 0, stdout: args.includes('--property=Linger') ? 'no\n' : '', stderr: '' };
+    };
+    await assert.rejects(
+      new Scheduler({ platform: 'linux', home, env: {}, runner }).install(job),
+      /registration failed/,
+    );
+    assert.ok(calls.some(args => args.includes('disable-linger')));
+    assert.equal(await readFile(outside, 'utf8'), original);
+    assert.equal(await readFile(timer, 'utf8'), 'outside sentinel\n');
+    assert.equal((await lstat(timer)).nlink, 1);
+    assert.equal((await lstat(timer)).isSymbolicLink(), false);
+  });
 
 test('lingering ownership requires a confirmed disabled state', async () => {
   for (const reply of [

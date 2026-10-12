@@ -7,13 +7,13 @@ import { Key } from '../core/crypto.js';
 import { Repo } from '../core/repo.js';
 import { location, permafrostKeyPage, type Backend } from '../core/storage.js';
 import { RepoState } from '../tui/setup.js';
-import { patternRegex } from '../engine/exclude.js';
+import { Excluder } from '../engine/exclude.js';
 import { Context, errNoKey } from './context.js';
 import { connect, explainConnect, opensRepo, phraseKey } from './connect.js';
 import { Prompter } from './prompt.js';
 import { phraseGrid } from './key.js';
 import { loadKnown } from './known.js';
-import { tildify } from './format.js';
+import { printable, tildify } from './format.js';
 
 // The closing line after a successful setup.
 export const setUp = (ctx: Context) =>
@@ -46,8 +46,8 @@ export async function finishSetup(
   await ctx.saveKey(key);
 
   const rows: [string, string][] = [
-    ['config', tildify(config.configPath())],
-    ['key', tildify(config.keyPath()) + ' (readable only by you)'],
+    ['config', printable(tildify(config.configPath()))],
+    ['key', printable(tildify(config.keyPath())) + ' (readable only by you)'],
   ];
   try {
     await ctx.hooks.syncSchedule(cfg);
@@ -56,7 +56,7 @@ export async function finishSetup(
       cfg.schedule.enabled ? cfg.schedule.every + ' via ' + (await ctx.hooks.scheduleKind()) : 'off',
     ]);
   } catch (err) {
-    rows.push(['schedule', 'not installed: ' + (err as Error).message]);
+    rows.push(['schedule', 'not installed: ' + ctx.fmt.errorText(err)]);
   }
   return rows;
 }
@@ -128,7 +128,7 @@ async function askPhraseFor(ctx: Context, p: Prompter, backend: Backend): Promis
       await opensRepo(ctx, backend, key);
       return key;
     } catch (err) {
-      p.fail((err as Error).message);
+      p.fail(ctx.fmt.errorText(err));
     }
   }
   throw new Error("couldn't unlock the repository");
@@ -198,7 +198,9 @@ async function promptKey(
     const k = await loadKnown();
     if (k.where && k.where !== location(b)) {
       p.gap();
-      p.warn(`There are no backups in ${b} yet. This machine's backups are in ${k.shown}.`);
+      p.warn(
+        `There are no backups in ${printable(String(b))} yet. This machine's backups are in ${printable(k.shown ?? '')}.`,
+      );
       p.line(
         'They stay there, but frost will only show the ones made here from now on, and the first backup uploads everything again.',
       );
@@ -252,7 +254,7 @@ export async function runInit(ctx: Context): Promise<void> {
       break;
     } catch (err) {
       f.write(f.error('failed') + '\n');
-      p.fail(f.caution((err as Error).message));
+      p.fail(f.caution(f.errorText(err)));
       p.gap();
     }
   }
@@ -274,7 +276,7 @@ export async function runInit(ctx: Context): Promise<void> {
       }
     }
     if (problem) {
-      p.warn(f.caution(problem));
+      p.warn(f.caution(printable(problem)));
       continue;
     }
     if (!paths.length) {
@@ -284,7 +286,7 @@ export async function runInit(ctx: Context): Promise<void> {
     cfg.paths = paths;
     const missing = missingDirs(paths);
     if (!missing.length) break;
-    p.warn(f.caution('not found: ' + missing.join(', ')));
+    p.warn(f.caution('not found: ' + missing.map(printable).join(', ')));
     if (await p.yesNo("  Add anyway? They're skipped until they exist.", false)) break;
   }
 
@@ -293,7 +295,7 @@ export async function runInit(ctx: Context): Promise<void> {
     cfg.exclude = await p.list(f.bold('Skip files matching') + f.dim(' (comma separated, - for none)'), cfg.exclude);
     const bad = cfg.exclude.find(pat => {
       try {
-        patternRegex(pat);
+        new Excluder([pat]);
         return false;
       } catch {
         return true;

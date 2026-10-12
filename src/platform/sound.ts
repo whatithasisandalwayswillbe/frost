@@ -194,9 +194,10 @@ interface Voice {
 // Mixes playing variants into 16-bit little-endian blocks for the streams.
 export class Mixer {
   private voices: Voice[] = [];
+  private fade?: Voice;
 
   get active(): boolean {
-    return this.voices.length > 0;
+    return this.voices.length > 0 || !!this.fade;
   }
 
   // Starts a variant, unless its clip is already playing four times. With every voice busy, the voice nearest its
@@ -208,7 +209,14 @@ export class Mixer {
       const v = this.voices.reduce((a, b) => (left(b) < left(a) ? b : a));
       const fade = v.samples.slice(v.at, v.at + Math.trunc(0.003 * sampleRate));
       for (let i = 0; i < fade.length; i++) fade[i] *= 1 - i / fade.length;
-      Object.assign(v, { name: '', samples: fade, at: 0 });
+      // Combine remaining tails into one short buffer, keeping both live voices and mixing work
+      // bounded even when many sounds start before the next output block.
+      const tail = this.fade;
+      const combined = new Float32Array(Math.max(fade.length, tail ? tail.samples.length - tail.at : 0));
+      combined.set(fade);
+      if (tail) for (let i = tail.at; i < tail.samples.length; i++) combined[i - tail.at] += tail.samples[i];
+      this.fade = { name: '', samples: combined, at: 0 };
+      this.voices.splice(this.voices.indexOf(v), 1);
     }
     this.voices.push({ name, samples, at: 0 });
     return true;
@@ -220,10 +228,15 @@ export class Mixer {
     for (let i = 0; i < frames; i++) {
       let sum = 0;
       for (const v of this.voices) if (v.at + i < v.samples.length) sum += v.samples[v.at + i];
+      if (this.fade && this.fade.at + i < this.fade.samples.length) sum += this.fade.samples[this.fade.at + i];
       out.writeInt16LE(Math.round(Math.max(-1, Math.min(1, sum)) * 32767), i * 2);
     }
     for (const v of this.voices) v.at += frames;
     this.voices = this.voices.filter(v => v.at < v.samples.length);
+    if (this.fade) {
+      this.fade.at += frames;
+      if (this.fade.at >= this.fade.samples.length) this.fade = undefined;
+    }
     return out;
   }
 }
@@ -570,7 +583,8 @@ export async function openPulse(
       if (closed) throw new Error('the sound stream is closed');
       const [state, bytes] = locked(() => [api.pa_stream_get_state(stream), api.pa_stream_writable_size(stream)]);
       if (state !== 2) throw new Error('the sound server stopped the stream');
-      return (Number(bytes) / (sampleRate * 2)) * 1000;
+      if (bytes === 0xffffffffffffffffn) throw new Error('could not read sound stream capacity');
+      return Math.min(maxLeadMs, (Number(bytes) / (sampleRate * 2)) * 1000);
     },
     write(block) {
       if (closed || locked(() => api.pa_stream_write(stream, block, BigInt(block.length), null, 0n, 0)) < 0)

@@ -26,7 +26,7 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 - **A backup with nothing new saves no snapshot.** If nothing changed since the last snapshot, `frost backup` says it's already backed up instead of saving a copy. Otherwise it says how many files were added, changed and removed.
 
-- **Snapshots have no size limit.** A snapshot's file list is stored in chunks like file data, so it fits Permafrost's 16 MiB object limit at any size. The parts that didn't change since the last backup aren't uploaded again.
+- **Snapshot file lists use multiple objects.** A snapshot's file list is stored in chunks like file data, so the complete list can exceed Permafrost's 16 MiB object limit, up to what memory and runtime limits allow. The parts that didn't change since the last backup aren't uploaded again.
 
 - **`frost backup --dry-run` shows what would upload.** It says what changed and lists every file with new data, and the total.
 

@@ -137,10 +137,20 @@ function statValue(
   size: bigint,
   fileMode: number,
   uid: number,
+  nlink: number,
   seconds: bigint,
   ns: bigint,
+  changedSeconds: bigint,
+  changedNs: bigint,
 ): RootStat {
-  if (size < 0n || size > BigInt(Number.MAX_SAFE_INTEGER) || ns < 0n || ns >= nanoseconds)
+  if (
+    size < 0n ||
+    size > BigInt(Number.MAX_SAFE_INTEGER) ||
+    ns < 0n ||
+    ns >= nanoseconds ||
+    changedNs < 0n ||
+    changedNs >= nanoseconds
+  )
     throw systemError(darwin ? 84 : 75, 'stat');
   return {
     dev,
@@ -148,7 +158,9 @@ function statValue(
     size: Number(size),
     mode: fileMode,
     uid,
+    nlink,
     mtimeNs: seconds * nanoseconds + ns,
+    ctimeNs: changedSeconds * nanoseconds + changedNs,
     isFile: () => (fileMode & 0o170000) === 0o100000,
     isDirectory: () => (fileMode & 0o170000) === 0o040000,
     isSymbolicLink: () => (fileMode & 0o170000) === 0o120000,
@@ -159,8 +171,8 @@ function statValue(
 function stat(fd: number, name?: string): RootStat {
   const data = Buffer.alloc(darwin ? 144 : 256);
 
-  // Darwin's 144-byte struct stat: st_dev at 0, st_mode u16 at 4, st_ino at 8, st_uid at 16,
-  // st_mtimespec at 48 (seconds) and 56 (nanoseconds), st_size at 96.
+  // Darwin's 144-byte struct stat: st_dev at 0, st_mode u16 at 4, st_nlink u16 at 6, st_ino at 8, st_uid at 16,
+  // st_mtimespec at 48 and 56, st_ctimespec at 64 and 72, and st_size at 96.
   if (darwin) {
     if (name === undefined) invoke('fstat', [fd, data]);
     else invoke('fstatat', [fd, name, data, AT_SYMLINK_NOFOLLOW], name);
@@ -170,16 +182,19 @@ function stat(fd: number, name?: string): RootStat {
       data.readBigInt64LE(96),
       data.readUInt16LE(4),
       data.readUInt32LE(16),
+      data.readUInt16LE(6),
       data.readBigInt64LE(48),
       data.readBigInt64LE(56),
+      data.readBigInt64LE(64),
+      data.readBigInt64LE(72),
     );
   }
 
   // statx has one kernel layout on both Linux architectures.
   // With no name, AT_EMPTY_PATH (0x1000) stats fd itself. 0x7ff asks for STATX_BASIC_STATS, and
-  // 0x34b checks the reply has TYPE, MODE, UID, MTIME, INO and SIZE.
+  // 0x3cf checks the reply has TYPE, MODE, NLINK, UID, MTIME, CTIME, INO and SIZE.
   invoke('statx', [fd, name ?? '', AT_SYMLINK_NOFOLLOW | (name === undefined ? 0x1000 : 0), 0x7ff, data], name);
-  if ((data.readUInt32LE(0) & 0x34b) !== 0x34b) throw new Error('filesystem did not return required native metadata');
+  if ((data.readUInt32LE(0) & 0x3cf) !== 0x3cf) throw new Error('filesystem did not return required native metadata');
 
   // stx_dev_major and stx_dev_minor sit at 136 and 140. Packing them like glibc's makedev, as
   // libuv does, keeps dev equal to what Node's fs.stat reports.
@@ -188,15 +203,19 @@ function stat(fd: number, name?: string): RootStat {
   const dev =
     (minor & 0xffn) | ((major & 0xfffn) << 8n) | ((minor & 0xffffff00n) << 12n) | ((major & 0xfffff000n) << 32n);
 
-  // stx_ino at 32, stx_size at 40, stx_mode u16 at 28, stx_uid at 20, stx_mtime at 112 and 120.
+  // stx_ino at 32, stx_size at 40, stx_mode u16 at 28, stx_uid at 20, stx_nlink at 16, stx_mtime at 112 and 120,
+  // and stx_ctime at 96 and 104.
   return statValue(
     dev,
     data.readBigUInt64LE(32),
     data.readBigUInt64LE(40),
     data.readUInt16LE(28),
     data.readUInt32LE(20),
+    data.readUInt32LE(16),
     data.readBigInt64LE(112),
     BigInt(data.readUInt32LE(120)),
+    data.readBigInt64LE(96),
+    BigInt(data.readUInt32LE(104)),
   );
 }
 

@@ -393,13 +393,14 @@ export class Repo {
 
     // `live` maps an ID to its download while the window still needs it, and `refs` counts the
     // window positions that do. `queue` holds the window by position.
-    type Fetch = { id: string; refs: number; result: Promise<{ data?: Buffer; error?: unknown }> };
+    type Result = { data?: Buffer; error?: unknown };
+    type Fetch = { id: string; refs: number; result: Promise<Result>; finish: (result: Result) => void };
     const live = new Map<string, Fetch>();
     const queue = new Array<Fetch | undefined>(window);
     const pending: Fetch[] = [];
     let active = 0;
     let next = 0;
-    const started: Promise<unknown>[] = [];
+    const started = new Set<Promise<void>>();
 
     // Starts queued downloads while fewer than `workers` are running.
     const pump = () => {
@@ -412,11 +413,12 @@ export class Repo {
             error => ({ error }),
           )
           .then(result => {
-            (job as Fetch & { finish: (value: { data?: Buffer; error?: unknown }) => void }).finish(result);
+            job.finish(result);
             active--;
+            started.delete(work);
             pump();
           });
-        started.push(work);
+        started.add(work);
       }
     };
 
@@ -428,17 +430,11 @@ export class Repo {
         for (; next < ids.length && next < i + window; next++) {
           let job = live.get(ids[next]);
           if (!job) {
-            let finish!: (value: { data?: Buffer; error?: unknown }) => void;
-            job = Object.assign(
-              {
-                id: ids[next],
-                refs: 0,
-                result: new Promise<{ data?: Buffer; error?: unknown }>(resolve => {
-                  finish = resolve;
-                }),
-              },
-              { finish },
-            );
+            let finish!: (value: Result) => void;
+            const result = new Promise<Result>(resolve => {
+              finish = resolve;
+            });
+            job = { id: ids[next], refs: 0, result, finish };
             live.set(job.id, job);
             pending.push(job);
           }

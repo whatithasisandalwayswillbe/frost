@@ -118,7 +118,7 @@ async function gitNano(): Promise<string> {
 
 const editorName = (command: string[]): string => {
   const name = path.basename(command[0], path.extname(command[0]));
-  return name.toLowerCase() === 'notepad' ? 'Notepad' : name;
+  return name.toLowerCase() === 'notepad' ? 'Notepad' : printable(name);
 };
 
 // Runs `frost config edit`. The editor works on a private copy, and config.toml only changes once the copy
@@ -145,7 +145,7 @@ async function configEdit(ctx: Context, named: string): Promise<void> {
   try {
     await config.writePrivate(draft, orig);
     const p = ctx.prompt();
-    p.open('config', tildify(file));
+    p.open('config', printable(tildify(file)));
     p.gap();
 
     // Edit until the copy parses, or the user gives up.
@@ -176,7 +176,7 @@ async function configEdit(ctx: Context, named: string): Promise<void> {
         now = config.parse(edited);
         break;
       } catch (err) {
-        p.fail(ctx.fmt.caution((err as Error).message));
+        p.fail(ctx.fmt.caution(ctx.fmt.errorText(err)));
         if (!(await p.yesNo('Open it again to fix it?', true))) throw new Error('cancelled, nothing was saved');
         p.gap();
       }
@@ -191,7 +191,7 @@ async function configEdit(ctx: Context, named: string): Promise<void> {
     try {
       config.validate(now!);
     } catch (err) {
-      p.warn(ctx.fmt.caution((err as Error).message));
+      p.warn(ctx.fmt.caution(ctx.fmt.errorText(err)));
     }
     await checkStorageChange(ctx, p, was.storage, now!.storage, true);
 
@@ -216,7 +216,7 @@ export async function runConfig(ctx: Context, args: string[], showSecrets: boole
   // `frost config` lists every setting. Secrets are hidden unless --show-secrets.
   if (!args.length) {
     const b = ctx.fmt.block();
-    b.open('config', tildify(config.configPath()));
+    b.open('config', printable(tildify(config.configPath())));
     b.gap();
     config.keys().forEach(k => (b.width = Math.max(b.width, k.length + 1)));
     for (const key of config.keys()) {
@@ -253,7 +253,7 @@ export async function runConfig(ctx: Context, args: string[], showSecrets: boole
   }
 
   const b = ctx.fmt.block();
-  b.open('config', tildify(config.configPath()));
+  b.open('config', printable(tildify(config.configPath())));
   b.gap();
   const changes = configChanges(b, was, cfg);
   if (!changes.length) {

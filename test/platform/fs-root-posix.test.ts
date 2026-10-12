@@ -65,7 +65,9 @@ for (const location of locations) {
     assert.equal(native.size, Number(reference.size));
     assert.equal(native.mode, Number(reference.mode));
     assert.equal(native.uid, Number(reference.uid));
+    assert.equal(native.nlink, Number(reference.nlink));
     assert.equal(native.mtimeNs, reference.mtimeNs);
+    assert.equal(native.ctimeNs, reference.ctimeNs);
     assert.equal(native.mtimeNs, is9p(location) ? (modified / 1_000_000_000n) * 1_000_000_000n : modified);
     assert.equal(native.isFile(), true);
     assert.equal(native.isDirectory(), false);
@@ -102,6 +104,35 @@ for (const location of locations) {
     root.remove('child', true);
     assert.equal(fs.existsSync(path.join(base, 'child')), false);
   });
+
+  test(
+    `native POSIX link counts identify a hardlink outside the retained root in ${location}`,
+    { skip: !supported },
+    t => {
+      const base = fs.mkdtempSync(path.join(location, 'frost-hardlinks-'));
+      t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+      const target = path.join(base, 'root');
+      const outside = path.join(base, 'outside');
+      fs.mkdirSync(target);
+      fs.mkdirSync(outside);
+      fs.writeFileSync(path.join(outside, 'sentinel'), 'unchanged');
+      try {
+        fs.linkSync(path.join(outside, 'sentinel'), path.join(target, 'linked'));
+      } catch (error) {
+        if (!['ENOTSUP', 'EOPNOTSUPP', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+        t.skip('the filesystem does not support hardlinks');
+        return;
+      }
+      const root = posixBackend.openRoot(target);
+      t.after(() => root.close());
+      const file = root.open('linked', { read: true });
+      t.after(() => file.close());
+      assert.equal(file.stat().nlink, 2);
+      assert.equal(root.lstat('linked').nlink, 2);
+      assert.equal(file.stat().nlink, fs.statSync(path.join(outside, 'sentinel')).nlink);
+      assert.equal(fs.readFileSync(path.join(outside, 'sentinel'), 'utf8'), 'unchanged');
+    },
+  );
 
   // `child` is renamed to `moved` and a symlink to `outside` takes its name. The open `child`
   // handle must keep working on the real folder, and nothing may land in `outside`.

@@ -129,6 +129,7 @@ test('fetch preserves order, bounded concurrency and nearby dedupe', async () =>
     /stop/,
   );
   assert.equal(calls, 3);
+  assert.equal(active, 0);
 
   // Aborting from inside the first callback stops before a second one.
   const controller = new AbortController();
@@ -145,6 +146,7 @@ test('fetch preserves order, bounded concurrency and nearby dedupe', async () =>
     ),
   );
   assert.equal(calls, 1);
+  assert.equal(active, 0);
 });
 
 test('failed tree uploads never commit snapshot metadata', async () => {
