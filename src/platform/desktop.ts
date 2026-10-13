@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { run, type Runner } from './command.js';
+import { loadFFI, type FFIType } from './ffi-loader.js';
 
 export const errCanceled = new Error('no folder chosen');
 
@@ -114,25 +115,35 @@ export async function canPick(options: DesktopOptions = {}): Promise<boolean> {
 // Shows a native folder picker and returns the chosen path. Cancelling, or an empty answer,
 // throws errCanceled.
 export async function pickFolder(title: string, startDir = '', options: DesktopOptions = {}): Promise<string> {
+  options.signal?.throwIfAborted();
   const platform = options.platform ?? process.platform;
   const runner = options.runner ?? run;
   let result;
 
   if (platform === 'win32') {
-    // A WinForms dialog needs an STA thread. The title and start folder travel as base64, and
-    // the script as -EncodedCommand, so nothing needs quoting.
-    const ps =
-      '$ErrorActionPreference="Stop"; Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' +
-      Buffer.from(title).toString('base64') +
-      '")); $d.SelectedPath=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("' +
-      Buffer.from(startDir).toString('base64') +
-      '")); if($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){[Console]::Write($d.SelectedPath)}else{exit 1}; $d.Dispose()';
+    if (title.includes('\0') || startDir.includes('\0')) throw new Error('invalid folder picker text');
+    // The bundled runtime opens the modal dialog off the terminal thread and closes it on cancellation.
+    const script = `
+      import { pickWindowsFolder } from ${JSON.stringify(import.meta.url)};
+      try {
+        let input = '';
+        process.stdin.setEncoding('utf8');
+        for await (const chunk of process.stdin) input += chunk;
+        const { title, start } = JSON.parse(input);
+        process.stdout.write(pickWindowsFolder(title, start));
+      } catch (error) {
+        process.stderr.write(error.message);
+        process.exitCode = 2;
+      }
+    `;
     result = await runner(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')],
-      undefined,
+      process.execPath,
+      ['--input-type=module', '-e', script],
+      JSON.stringify({ title, start: startDir }),
       options.signal,
     );
+    // Cancellation succeeds with no selection. Every nonzero exit is a failure and triggers the typed fallback.
+    if (result.code) throw new Error(result.stderr || 'folder picker failed');
   } else if (platform === 'darwin') {
     // AppleScript string literals escape backslashes and double quotes. A start folder that doesn't
     // exist makes choose folder fail before the dialog opens, so it's left out then.
@@ -168,4 +179,125 @@ export async function pickFolder(title: string, startDir = '', options: DesktopO
   const chosen = platform === 'win32' ? result.stdout : result.stdout.replace(/\r?\n$/, '');
   if (result.code || !chosen) throw errCanceled;
   return chosen;
+}
+
+const pickerMemory = new Set<Buffer[]>();
+
+// Called in the child above. IFileOpenDialog supplies Explorer's full folder view through fixed Windows APIs.
+export function pickWindowsFolder(title: string, start: string): string {
+  if (process.platform !== 'win32' || !['x64', 'arm64'].includes(process.arch))
+    throw new Error('unsupported Windows folder picker ABI');
+  const ffi = loadFFI();
+  const def = (returns: FFIType, ...args: FFIType[]) => ({ return: returns, arguments: args });
+  const ole = ffi.dlopen('ole32.dll', {
+    CoInitializeEx: def('int32', 'pointer', 'uint32'),
+    CoUninitialize: def('void'),
+    CoCreateInstance: def('int32', 'pointer', 'pointer', 'uint32', 'pointer', 'pointer'),
+    CoTaskMemFree: def('void', 'pointer'),
+  }).functions;
+  const shell = ffi.dlopen('shell32.dll', {
+    SHCreateItemFromParsingName: def('int32', 'pointer', 'pointer', 'pointer', 'pointer'),
+  }).functions;
+  const automation = ffi.dlopen('oleaut32.dll', {
+    DispCallFunc: def('int32', 'pointer', 'uint64', 'int32', 'uint16', 'uint32', 'pointer', 'pointer', 'pointer'),
+  }).functions;
+  const memory = ffi.dlopen('kernel32.dll', {
+    lstrlenW: def('int32', 'pointer'),
+    RtlMoveMemory: def('void', 'pointer', 'pointer', 'uint64'),
+  }).functions;
+  const fixed = (size: number) => Buffer.from(new ArrayBuffer(size));
+  const wide = (value: string) => {
+    if (value.includes('\0')) throw new Error('invalid folder picker text');
+    return Buffer.from(value + '\0', 'utf16le');
+  };
+  const check = (status: number, operation: string) => {
+    if (status & 0x80000000) throw new Error(`${operation} failed (0x${(status >>> 0).toString(16)})`);
+  };
+  // DispCallFunc bridges COM's vtable using 24-byte VARIANTs: type at 0, value at 8. Pointers use VT_UI8,
+  // flags use VT_UI4, and HRESULT returns use VT_I4. All slots and offsets below use the 64-bit Windows ABI.
+  const call = (object: bigint, slot: number, args: (number | bigint | Buffer)[] = [], returns = 3): number => {
+    const types = fixed(args.length * 2),
+      pointers = fixed(args.length * 8),
+      result = fixed(24);
+    const values = args.map((arg, i) => {
+      const value = fixed(24),
+        type = typeof arg === 'number' ? 19 : 21;
+      value.writeUInt16LE(type);
+      types.writeUInt16LE(type, i * 2);
+      if (typeof arg === 'number') value.writeUInt32LE(arg >>> 0, 8);
+      else value.writeBigUInt64LE(typeof arg === 'bigint' ? arg : ffi.getRawPointer(arg), 8);
+      pointers.writeBigUInt64LE(ffi.getRawPointer(value), i * 8);
+      return value;
+    });
+    const retained = [types, pointers, result, ...values, ...args.filter((arg): arg is Buffer => Buffer.isBuffer(arg))];
+    pickerMemory.add(retained);
+    try {
+      check(
+        Number(automation.DispCallFunc(object, BigInt(slot * 8), 4, returns, args.length, types, pointers, result)),
+        'DispCallFunc',
+      );
+      return result.readUInt32LE(8);
+    } finally {
+      pickerMemory.delete(retained);
+    }
+  };
+  const release = (object: bigint) => call(object, 2, [], 19);
+  const output = (operation: string, action: (out: Buffer) => number): bigint => {
+    const out = fixed(8);
+    check(action(out), operation);
+    const pointer = out.readBigUInt64LE();
+    if (!pointer) throw new Error(`${operation} returned no result`);
+    return pointer;
+  };
+  // CLSID_FileOpenDialog, IID_IFileOpenDialog and IID_IShellItem in native GUID byte order.
+  const clsid = Buffer.from('9c5a1cdc8ae8de4da5a160f82a20aef7', 'hex');
+  const dialogIID = Buffer.from('88727cd5add46847be029d969532d960', 'hex');
+  const itemIID = Buffer.from('1e6d824318e7ee42bc55a1e261c37bfe', 'hex');
+  check(Number(ole.CoInitializeEx(null, 2)), 'CoInitializeEx');
+  let dialog = 0n;
+  try {
+    dialog = output('CoCreateInstance', out => Number(ole.CoCreateInstance(clsid, null, 1, dialogIID, out)));
+    const options = fixed(4);
+    check(call(dialog, 10, [options]), 'GetOptions');
+    // FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR.
+    check(call(dialog, 9, [options.readUInt32LE() | 0x868]), 'SetOptions');
+    check(call(dialog, 17, [wide(title)]), 'SetTitle');
+    if (start) {
+      let item = 0n;
+      try {
+        item = output('SHCreateItemFromParsingName', out =>
+          Number(shell.SHCreateItemFromParsingName(wide(start), null, itemIID, out)),
+        );
+        check(call(dialog, 12, [item]), 'SetFolder');
+      } catch {
+        // Windows uses its default folder if the starting location is no longer available.
+      } finally {
+        if (item) release(item);
+      }
+    }
+    const shown = call(dialog, 3, [0n]);
+    if (shown === 0x800704c7) return '';
+    check(shown, 'Show');
+    const item = output('GetResult', out => call(dialog, 20, [out]));
+    try {
+      const text = output('GetDisplayName', out => call(item, 5, [0x80058000, out]));
+      try {
+        const length = Number(memory.lstrlenW(text));
+        if (length <= 0 || length > 32767) throw new Error('invalid folder picker result');
+        const buffer = fixed(length * 2);
+        memory.RtlMoveMemory(buffer, text, BigInt(buffer.length));
+        return buffer.toString('utf16le');
+      } finally {
+        ole.CoTaskMemFree(text);
+      }
+    } finally {
+      release(item);
+    }
+  } finally {
+    try {
+      if (dialog) release(dialog);
+    } finally {
+      ole.CoUninitialize();
+    }
+  }
 }

@@ -171,6 +171,8 @@ Files are flushed before activation. POSIX also flushes staged directories from 
 
 `src/tui/` holds the browser, setup state machines, renderer and hidden game. Async commands carry cancellation and attempt identity, so stale picker and game results are ignored. Closing the program cancels outstanding work and restores terminal state.
 
+Windows folder selection runs in a separate bundled-runtime process and calls the system's Explorer dialog directly through COM. This keeps the modal dialog off the terminal thread and lets cancellation stop the helper.
+
 The browser indexes subtree counts and sizes once per tree, caches date headings and reuses downloaded headers on refresh. It reads manifest state up front, then releases the lock so a scheduled backup can run while the browser is open.
 
 `src/tui/render.ts` defines the palette and cell layout. `src/cli/format.ts` keeps CLI styles foreground-only. Frozen output fixtures check text, spacing, foreground, background and emphasis across window sizes. The development demo uses fake storage and never installs a scheduler job.

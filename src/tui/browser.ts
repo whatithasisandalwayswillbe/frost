@@ -3,7 +3,6 @@
 
 import path from 'node:path';
 import os from 'node:os';
-import { stat } from 'node:fs/promises';
 import { cacheDir } from '../core/config.js';
 import { shorten, shortOf, diff } from '../core/snapshot.js';
 import { besideFolder, newRestoreFolder, canOverwrite, RestoreError } from '../engine/restore.js';
@@ -12,7 +11,7 @@ import type { BrowserRepo, Snapshot, Config, State, Change } from './types.js';
 import { FileTree, covered } from './tree.js';
 import { Form, type KeyEvent } from './input.js';
 import { Arcade, openGameSound, type GameSound } from './arcade.js';
-import { RestoreState, restoreContent, restoreHints, carryOn, asError } from './restore.js';
+import { RestoreState, restoreContent, restoreHints, pickerStartFolder, carryOn, asError } from './restore.js';
 import { runTerminal, type TerminalOptions } from './terminal.js';
 import {
   style,
@@ -1300,39 +1299,48 @@ export class BrowserModel {
   }
 
   // Opens the system folder picker without waiting for it, or falls back to typing when there isn't one.
-  // The picker starts in the folder picked before, else the selection's original folder if it exists, else home.
+  // The previous or original folder sets the start location when it responds. Otherwise the picker starts at home.
   async startPick(): Promise<void> {
+    if (this.restorePreparation) return;
     const rs = this.rs;
-    const work = this.prepareRestore(() => (rs.phase = rs.afterPick()));
-    if (!work) return;
-    try {
-      const canPick = await this.deps.canPick();
-      if (!this.prepared(work)) return;
-      if (!canPick) {
-        this.startTyping();
-        this.flash = "There's no folder picker here, so type the folder instead.";
-        return;
-      }
-    } finally {
-      this.finishPreparing(work);
-    }
+    rs.pickController?.abort();
     const seq = ++rs.pickSeq;
     const controller = new AbortController();
     rs.pickController = controller;
     rs.phase = 'picking';
-    let start = rs.picked || os.homedir();
-    if (!rs.picked && rs.base && path.isAbsolute(rs.base))
-      try {
-        if ((await stat(rs.base)).isDirectory()) start = rs.base;
-      } catch {}
-    if (controller.signal.aborted || this.signal?.aborted) return;
     this.onChange?.();
 
     // The answer only counts while this is still the latest picker and it hasn't been cancelled.
     const signal = AbortSignal.any([controller.signal, this.signal!]);
-    const current = () => rs.phase === 'picking' && seq === rs.pickSeq && !signal.aborted;
-    void this.deps.pickFolder('Restore to', start, signal).then(
-      async p => {
+    const current = () =>
+      this.rs === rs &&
+      this.screen === 'restore' &&
+      !this.exited &&
+      rs.phase === 'picking' &&
+      seq === rs.pickSeq &&
+      !signal.aborted;
+    const failed = (e: unknown) => {
+      if (!current()) return;
+      rs.phase = rs.afterPick();
+      if (e !== desktop.errCanceled) {
+        this.startTyping();
+        this.flash = "Couldn't open the folder picker, so type the folder instead: " + asError(e).message;
+      }
+      this.onChange?.();
+    };
+    if (!current()) return;
+    try {
+      const canPick = await this.deps.canPick();
+      if (!current()) return;
+      if (!canPick) {
+        this.startTyping();
+        this.flash = "There's no folder picker here, so type the folder instead.";
+        this.onChange?.();
+        return;
+      }
+      const start = await pickerStartFolder(rs.picked || rs.base, os.homedir(), signal);
+      if (!current()) return;
+      void this.deps.pickFolder('Restore to', start, signal).then(async p => {
         if (!current()) return;
         try {
           await rs.setPicked(p, this.deps, signal);
@@ -1344,17 +1352,10 @@ export class BrowserModel {
           this.flash = asError(e).message;
         }
         this.onChange?.();
-      },
-      e => {
-        if (!current()) return;
-        rs.phase = rs.afterPick();
-        if (e !== desktop.errCanceled) {
-          this.startTyping();
-          this.flash = "Couldn't open the folder picker, so type the folder instead: " + asError(e).message;
-        }
-        this.onChange?.();
-      },
-    );
+      }, failed);
+    } catch (e) {
+      failed(e);
+    }
   }
 
   // Switches to typing a folder, starting from the one picked before.

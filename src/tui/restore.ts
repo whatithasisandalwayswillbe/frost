@@ -31,6 +31,42 @@ import {
 export const carryOn =
   "What's restored so far was kept. Restore the same files to the same place again and frost carries on where it stopped.";
 
+let probingStartFolder = false;
+
+// The initial folder is a convenience. Slow locations get 100 ms, and only one probe can remain pending.
+export async function pickerStartFolder(original: string, fallback: string, signal: AbortSignal): Promise<string> {
+  signal.throwIfAborted();
+  if (!original || !path.isAbsolute(original) || probingStartFolder) return fallback;
+  probingStartFolder = true;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort!: () => void;
+  const timeout = new Promise<string>(resolve => (timer = setTimeout(resolve, 100, fallback)));
+  const aborted = new Promise<never>((_, reject) => {
+    abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve()
+        .then(() => {
+          signal.throwIfAborted();
+          return stat(original);
+        })
+        .then(
+          s => (s.isDirectory() ? original : fallback),
+          () => fallback,
+        )
+        .finally(() => (probingStartFolder = false)),
+      timeout,
+      aborted,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', abort);
+  }
+}
+
 export class RestoreState {
   snap?: Snapshot;
   shown = '';
@@ -290,7 +326,7 @@ export function restoreContent(m: BrowserModel): string {
     }
   } else if (rs.phase === 'picking') {
     lines.push(line(style('bold', 'Choose a folder')), fill(w));
-    paragraph('text', 'Pick where to restore in the window that opened.');
+    paragraph('text', "Pick restore location in the window that's just opened.");
     paragraph('dim', 'frost makes a new ' + restoreFolderName(rs.snap!.id) + ' folder inside it.');
   } else if (rs.phase === 'ready') {
     paragraph('bold', restoreTitle(rs));

@@ -338,6 +338,7 @@ test('canceled and stale picker completions cannot change restore state', async 
   m.rs.dest = 1;
   await m.onKey('enter');
   assert.equal(m.rs.phase, 'picking');
+  assert.match(strip(m.view()), /Pick restore location in the window that's just opened\./);
 
   // Switching to typing cancels the picker, and its late answer is ignored.
   await m.onKey('t');
