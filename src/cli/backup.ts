@@ -1,5 +1,6 @@
 // `frost backup` runs the engine, prints the result block and spot-checks a sample of stored objects.
-// Scheduled runs also keep a log and check for updates afterwards.
+// Scheduled runs first check a backup is due, then keep a log and check for updates afterwards. A backup by
+// hand asks first when a scheduled one starts soon or just finished.
 
 import path from 'node:path';
 import { lstat } from 'node:fs/promises';
@@ -9,7 +10,7 @@ import { shorten, shortOf, compare } from '../core/snapshot.js';
 import type { Backend, Usage } from '../core/storage.js';
 import { changesNone, type BackupResult, type Changes, type Progress } from '../engine/index.js';
 import { code, message } from '../engine/types.js';
-import { Context } from './context.js';
+import { Context, errBusy } from './context.js';
 import {
   ago,
   Block,
@@ -24,10 +25,15 @@ import {
   cellWidth,
   truncateLeft,
   nativePath,
+  relative,
+  when,
 } from './format.js';
 import { sentence } from '../tui/render.js';
 import { StorageError, rememberFailure } from './known.js';
 import { autoUpdate } from './update.js';
+import { Prompter, requireConfirmation } from './prompt.js';
+import { loadRuns, nearby, rememberFinish, rememberStart } from './runs.js';
+import { reconcileFromRun, running, storageNotes } from './sync.js';
 
 interface BackupFlags {
   paths: string[];
@@ -243,8 +249,96 @@ export async function openScheduledLog(p: string) {
   }
 }
 
+// Scheduled runs often start as the computer wakes, before its network is back, so they try storage again
+// for about 5 minutes. They also wait up to an hour for another frost process to finish with the backups,
+// such as a backup started by hand.
+const offlineWaits = [10, 20, 40, 80, 150].map(s => s * 1000);
+const scheduledLockWait = 3600e3;
+const offlineCodes = [
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'ENETDOWN',
+  'EADDRNOTAVAIL',
+];
+
+// Whether an error, or one behind it, says the storage couldn't be reached at all.
+function offline(err: unknown): boolean {
+  for (let reason = err; reason; reason = (reason as Error).cause)
+    if (offlineCodes.includes(code(reason) ?? '')) return true;
+  return false;
+}
+
+async function openForBackup(ctx: Context, scheduled: boolean) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await ctx.openApp(scheduled ? scheduledLockWait : undefined);
+    } catch (err) {
+      if (!scheduled || attempt >= offlineWaits.length || !offline(err)) throw err;
+      await ctx.hooks.wait(offlineWaits[attempt], ctx.signal);
+    }
+  }
+}
+
+// Before a full backup by hand in a terminal, mentions a scheduled backup that starts soon or just finished
+// and asks whether to go ahead. Returns the open block, or nothing when there was nothing to ask. Settings
+// or records it can't read mean not asking.
+async function confirmNearSchedule(ctx: Context): Promise<Prompter | undefined> {
+  const now = ctx.hooks.clock();
+  let near, title;
+  try {
+    const cfg = await config.load();
+    if (!cfg.schedule.enabled) return undefined;
+    near = nearby(config.times(cfg.schedule), await loadRuns(), now);
+    title = printable(String(ctx.hooks.backend(cfg.storage)));
+  } catch {
+    return undefined;
+  }
+  if (!near || !(await ctx.hooks.scheduleInstalled())) return undefined;
+
+  const p = ctx.prompt();
+  p.open('backup', title);
+  p.gap();
+  if ('starts' in near) {
+    const wait = near.starts.getTime() - now.getTime();
+    const at = when(near.starts.toISOString()).slice(-5);
+    p.line('A scheduled backup starts ' + (wait < 60e3 ? 'at ' : 'in ' + relative(wait) + ', at ') + at + '.');
+  } else p.line('A scheduled backup finished ' + ago(near.finished.toISOString(), now.getTime()) + '.');
+  await requireConfirmation(p.yesNo('Back up now anyway?', true));
+  return p;
+}
+
+// The error for a backup by hand that finds the backups busy, naming a scheduled backup when one is running.
+async function busy(ctx: Context): Promise<Error> {
+  const runs = await loadRuns();
+  const now = ctx.hooks.clock();
+  if (!running(ctx, runs)) return errBusy;
+  return new Error(
+    'a scheduled backup is already running (started ' +
+      ago(runs.run!.started, now.getTime()) +
+      "), try again when it's done",
+  );
+}
+
 export async function runBackup(ctx: Context, flags: BackupFlags): Promise<void> {
   if (flags.logFile && !flags.scheduled) throw new Error('--log-file requires --scheduled');
+
+  // Only a full backup counts for the schedule. A scheduled run decides first, then brings its job in line
+  // with config.toml where it can, which installs the job anew and would otherwise count as covering this
+  // run. One that isn't due leaves no other trace: no log and no update check.
+  const stamp = () => '[' + new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') + '] ';
+  const full = !flags.dryRun && !flags.paths.length && !flags.exclude.length;
+  if (flags.scheduled && full) {
+    const due = await ctx.hooks.scheduledDue(ctx.hooks.clock());
+    const synced = await reconcileFromRun(ctx);
+    if (synced) ctx.fmt.write(stamp() + synced + '\n');
+    if (!due) return;
+  }
+  let runID = '';
 
   let log: { write(data: string | Buffer): Promise<{ bytesWritten: number }>; close(): Promise<void> } | undefined;
   let pending = Promise.resolve();
@@ -290,22 +384,28 @@ export async function runBackup(ctx: Context, flags: BackupFlags): Promise<void>
           await f?.close();
         }
       }
-      ctx.fmt.write('[' + new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') + '] scheduled backup starting\n');
+      ctx.fmt.write(stamp() + 'scheduled backup starting\n');
+      if (full) runID = await rememberStart(true, ctx.hooks.clock());
+      for (const line of await storageNotes(ctx)) ctx.fmt.write(stamp() + line + '\n');
     }
+    const asked = !flags.scheduled && full && ctx.inputTTY ? await confirmNearSchedule(ctx) : undefined;
 
-    // A storage failure is remembered so `frost status` can show it.
+    // A storage failure is remembered so `frost status` can show it. A backup by hand records its start
+    // once it has the backups to itself.
     let a;
     try {
-      a = await ctx.openApp();
+      a = await openForBackup(ctx, flags.scheduled);
     } catch (err) {
       if (err instanceof StorageError) await rememberFailure(err);
+      if (err === errBusy && !flags.scheduled) throw await busy(ctx);
       throw err;
     }
+    if (full && !flags.scheduled) runID = await rememberStart(false, ctx.hooks.clock());
 
     try {
       const { cfg, engine: e } = a;
-      const b = ctx.fmt.block();
-      b.open(flags.dryRun ? 'dry run' : 'backup', printable(String(e.repo.backend)));
+      const b = asked ?? ctx.fmt.block();
+      if (!asked) b.open(flags.dryRun ? 'dry run' : 'backup', printable(String(e.repo.backend)));
 
       // Progress redraws at most every 100 ms, and only on an interactive terminal.
       let last = 0;
@@ -415,6 +515,7 @@ export async function runBackup(ctx: Context, flags: BackupFlags): Promise<void>
     // A scheduled run logs its error, then checks for updates. The original formatter comes back last and
     // keeps the block state, so the error line still knows whether to close a block.
     try {
+      if (runID) await rememberFinish(runID, !error, ctx.hooks.clock());
       if (flags.scheduled) {
         if (log && error) queueLog(strip(ctx.fmt.errorLine(error, ctx.fmt.blockOpen)) + '\n\n');
         await autoUpdate(ctx);

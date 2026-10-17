@@ -12,7 +12,8 @@ import { Context, errNoKey } from './context.js';
 import { connect, explainConnect, opensRepo, phraseKey } from './connect.js';
 import { Prompter } from './prompt.js';
 import { phraseGrid } from './key.js';
-import { loadKnown } from './known.js';
+import { loadKnown, rememberChecked } from './known.js';
+import { syncJob } from './sync.js';
 import { printable, tildify } from './format.js';
 
 // The closing line after a successful setup.
@@ -26,7 +27,7 @@ export const setUp = (ctx: Context) =>
 
 // Saves a finished setup. It creates the repository if the storage is new, writes config.toml and the key
 // file, then installs the scheduled job. A schedule that can't be installed shows in the returned rows
-// instead of failing setup.
+// instead of failing setup. Setup checked the storage, so the first command to use it doesn't again.
 export async function finishSetup(
   ctx: Context,
   cfg: config.Config,
@@ -44,16 +45,20 @@ export async function finishSetup(
   }
   await config.save(cfg);
   await ctx.saveKey(key);
+  try {
+    await rememberChecked(location(ctx.hooks.backend(cfg.storage)));
+  } catch {}
 
   const rows: [string, string][] = [
     ['config', printable(tildify(config.configPath()))],
     ['key', printable(tildify(config.keyPath())) + ' (readable only by you)'],
   ];
   try {
-    await ctx.hooks.syncSchedule(cfg);
+    const applied = await syncJob(ctx, cfg);
+    const after = applied ? '' : ', once the running backup finishes';
     rows.push([
       'schedule',
-      cfg.schedule.enabled ? cfg.schedule.every + ' via ' + (await ctx.hooks.scheduleKind()) : 'off',
+      (cfg.schedule.enabled ? cfg.schedule.every + ' via ' + (await ctx.hooks.scheduleKind()) : 'off') + after,
     ]);
   } catch (err) {
     rows.push(['schedule', 'not installed: ' + ctx.fmt.errorText(err)]);

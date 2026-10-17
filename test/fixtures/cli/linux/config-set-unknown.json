@@ -10,5 +10,5 @@
   "configured": true,
   "code": 1,
   "stdout": "",
-  "stderr": "\nerror: unknown config key \"unknown\", valid keys:\n  exclude\n  paths\n  schedule.enabled\n  schedule.every\n  storage.backend\n  storage.permafrost.token\n  storage.permafrost.url\n  storage.s3.access_key_id\n  storage.s3.bucket\n  storage.s3.endpoint\n  storage.s3.insecure\n  storage.s3.prefix\n  storage.s3.region\n  storage.s3.secret_access_key\n  update.auto\n  verify.sample\n\n"
+  "stderr": "\nerror: unknown config key \"unknown\", valid keys:\n  exclude\n  paths\n  schedule.catch_up\n  schedule.day\n  schedule.enabled\n  schedule.every\n  schedule.time\n  storage.backend\n  storage.permafrost.token\n  storage.permafrost.url\n  storage.s3.access_key_id\n  storage.s3.bucket\n  storage.s3.endpoint\n  storage.s3.insecure\n  storage.s3.prefix\n  storage.s3.region\n  storage.s3.secret_access_key\n  update.auto\n  verify.sample\n\n"
 }

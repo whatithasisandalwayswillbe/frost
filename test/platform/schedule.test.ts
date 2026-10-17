@@ -22,24 +22,34 @@ import {
   lingerMarker,
   onCalendar,
   cronSpec,
+  runBefore,
+  runAfter,
 } from '../../src/platform/schedule.js';
 import type { Runner } from '../../src/platform/command.js';
 import { openRoot } from '../../src/platform/fs-root.js';
 
-const job = { binary: '/usr/local/bin/frost', every: 6 * hour, logFile: '/home/me/.cache/frost/frost.log' };
+const job = {
+  binary: '/usr/local/bin/frost',
+  every: 6 * hour,
+  hour: 15,
+  minute: 0,
+  day: 0,
+  catchUp: false,
+  logFile: '/home/me/.cache/frost/frost.log',
+};
 
-// Paths with quotes, ampersands and angle brackets must survive each format's escaping. Cron and
-// launchd jobs run at minute 17, and daily and weekly ones at 03:17.
+// Paths with quotes, ampersands and angle brackets must survive each format's escaping. Runs under a
+// day apart count from the configured time, so 6h from 15:00 runs at 03:00, 09:00, 15:00 and 21:00.
 test('scheduler definitions preserve interval, quoting, and logging', () => {
   const j = { ...job, configDir: "/it's here", cacheDir: '/cache & <files>' };
   assert.match(launchdPlist(j), /\/cache &amp; &lt;files&gt;/);
   assert.doesNotMatch(launchdPlist(j), /StartInterval/);
   const { service, timer } = systemdUnits(j);
   assert.match(service, /ExecStart="\/usr\/local\/bin\/frost" backup --scheduled/);
-  assert.match(timer, /OnCalendar=\*-\*-\* 00\/6:00:00\nPersistent=true/);
+  assert.match(timer, /OnCalendar=\*-\*-\* 03,09,15,21:00:00\nPersistent=false/);
   assert.equal(
     cronLine({ ...job, configDir: "/it's here" }),
-    "17 */6 * * * '/usr/local/bin/frost' backup --scheduled --config-dir '/it'\\''s here' >> '/home/me/.cache/frost/frost.log' 2>&1 # frost-backup",
+    "0 3,9,15,21 * * * '/usr/local/bin/frost' backup --scheduled --config-dir '/it'\\''s here' >> '/home/me/.cache/frost/frost.log' 2>&1 # frost-backup",
   );
 
   // Only frost's own line is removed, never a line that merely mentions the marker.
@@ -48,34 +58,69 @@ test('scheduler definitions preserve interval, quoting, and logging', () => {
   assert.equal(stripCron('# See # frost-backup\n'), '# See # frost-backup\n');
   assert.equal(stripCron(cronLine(job) + '\n'), '');
 
+  // Every scheduler gets the same run times. Weekly runs fall on the configured day, here Wednesday.
+  const at = { hour: 9, minute: 30, day: 3 };
   for (const [every, calendar, cron] of [
-    [hour, 'hourly', '17 * * * *'],
-    [24 * hour, 'daily', '17 3 * * *'],
-    [168 * hour, 'weekly', '17 3 * * 0'],
+    [hour, '*-*-* *:30:00', '30 * * * *'],
+    [8 * hour, '*-*-* 01,09,17:30:00', '30 1,9,17 * * *'],
+    [12 * hour, '*-*-* 09,21:30:00', '30 9,21 * * *'],
+    [24 * hour, '*-*-* 09:30:00', '30 9 * * *'],
+    [168 * hour, 'Wed *-*-* 09:30:00', '30 9 * * 3'],
   ] as const) {
-    assert.equal(onCalendar(every), calendar);
-    assert.equal(cronSpec(every), cron);
+    assert.equal(onCalendar({ ...at, every }), calendar);
+    assert.equal(cronSpec({ ...at, every }), cron);
   }
 
   // launchd gets one calendar entry per run time, in the same order as cron's fields.
-  const launchdTimes = (every: number) =>
-    [
-      ...launchdPlist({ ...job, every }).matchAll(
-        /<dict>\n((?:\t+<key>\w+<\/key>\n\t+<integer>\d+<\/integer>\n)+)\t+<\/dict>/g,
-      ),
-    ].map(m =>
-      [...m[1].matchAll(/<key>(\w+)<\/key>\n\t+<integer>(\d+)<\/integer>/g)].map(f => f[1] + '=' + f[2]).join(' '),
+  const launchdTimes = (j: typeof job) =>
+    [...launchdPlist(j).matchAll(/<dict>\n((?:\t+<key>\w+<\/key>\n\t+<integer>\d+<\/integer>\n)+)\t+<\/dict>/g)].map(
+      m => [...m[1].matchAll(/<key>(\w+)<\/key>\n\t+<integer>(\d+)<\/integer>/g)].map(f => f[1] + '=' + f[2]).join(' '),
     );
-  assert.deepEqual(launchdTimes(hour), ['Minute=17']);
-  assert.deepEqual(launchdTimes(6 * hour), [
-    'Hour=0 Minute=17',
-    'Hour=6 Minute=17',
-    'Hour=12 Minute=17',
-    'Hour=18 Minute=17',
+  assert.deepEqual(launchdTimes({ ...job, every: hour }), ['Minute=0']);
+  assert.deepEqual(launchdTimes(job), ['Hour=3 Minute=0', 'Hour=9 Minute=0', 'Hour=15 Minute=0', 'Hour=21 Minute=0']);
+  assert.deepEqual(launchdTimes({ ...job, ...at, every: 8 * hour }), [
+    'Hour=1 Minute=30',
+    'Hour=9 Minute=30',
+    'Hour=17 Minute=30',
   ]);
-  assert.deepEqual(launchdTimes(8 * hour), ['Hour=0 Minute=17', 'Hour=8 Minute=17', 'Hour=16 Minute=17']);
-  assert.deepEqual(launchdTimes(24 * hour), ['Hour=3 Minute=17']);
-  assert.deepEqual(launchdTimes(168 * hour), ['Weekday=0 Hour=3 Minute=17']);
+  assert.deepEqual(launchdTimes({ ...job, every: 24 * hour }), ['Hour=15 Minute=0']);
+  assert.deepEqual(launchdTimes({ ...job, ...at, every: 168 * hour }), ['Weekday=3 Hour=9 Minute=30']);
+});
+
+// With catch-up on, launchd also runs the job at login, systemd catches up a run missed while the
+// machine was off, Task Scheduler starts a missed run when it can, and cron checks every 15 minutes
+// from the configured minute. Off, each scheduler runs only on time.
+test('catch-up adds each scheduler its way of running a missed backup', () => {
+  const on = { ...job, catchUp: true, minute: 20 };
+  assert.match(launchdPlist(on), /<key>RunAtLoad<\/key>\n\t<true\/>/);
+  assert.doesNotMatch(launchdPlist(job), /RunAtLoad/);
+  assert.match(systemdUnits(on).timer, /Persistent=true/);
+  assert.match(systemdUnits(job).timer, /Persistent=false/);
+  assert.match(taskXML(on), /<StartWhenAvailable>true<\/StartWhenAvailable>/);
+  assert.match(taskXML(job), /<StartWhenAvailable>false<\/StartWhenAvailable>/);
+  assert.match(cronLine(on), /^5,20,35,50 \* \* \* \* /);
+  assert.equal(cronSpec(job, true), '0,15,30,45 * * * *');
+});
+
+// Run times follow the local clock. A time exactly on a run counts as that run, and the next one is
+// strictly later.
+test('the run before and after a moment follow the schedule', () => {
+  const local = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m);
+  const daily = { every: 24 * hour, hour: 15, minute: 0, day: 0 };
+  assert.deepEqual(runBefore(daily, local(17, 14, 59)), local(16, 15));
+  assert.deepEqual(runBefore(daily, local(17, 15)), local(17, 15));
+  assert.deepEqual(runAfter(daily, local(17, 15)), local(18, 15));
+  assert.deepEqual(runAfter(daily, local(31, 23)), new Date(2026, 10, 1, 15));
+
+  // 2026-10-07 is a Wednesday, and 2026-10-17 a Saturday.
+  const weekly = { every: 168 * hour, hour: 9, minute: 30, day: 3 };
+  assert.deepEqual(runBefore(weekly, local(17, 12)), local(14, 9, 30));
+  assert.deepEqual(runAfter(weekly, local(17, 12)), local(21, 9, 30));
+  assert.deepEqual(runAfter(weekly, local(7, 9, 29)), local(7, 9, 30));
+
+  const sixHours = { every: 6 * hour, hour: 15, minute: 0, day: 0 };
+  assert.deepEqual(runBefore(sixHours, local(17, 2, 59)), local(16, 21));
+  assert.deepEqual(runAfter(sixHours, local(17, 3)), local(17, 9));
 });
 // Installed frost runs as the bundled runtime plus a launch script, which must stay two arguments.
 test('signed runtime and script remain separate scheduler arguments', () => {
@@ -120,7 +165,7 @@ function cronCommand(line: string): string {
 test('cron keeps literal percent signs after any number of path backslashes', () => {
   for (const slashes of ['', '\\', '\\\\', '\\\\\\']) {
     const value = "/name' $HOME " + slashes + '%part';
-    const j = { binary: value, script: value, configDir: value, cacheDir: value, logFile: value, every: hour };
+    const j = { ...job, binary: value, script: value, configDir: value, cacheDir: value, logFile: value, every: hour };
     const command = cronCommand(cronLine(j));
     assert.ok(command.includes(slashes + "'%"));
     if (process.platform !== 'win32') {
@@ -155,6 +200,10 @@ test('Windows task preserves registration, least privilege, schedule, and paths'
     cacheDir: 'C:\\cache & 100% !\\',
     logFile: 'C:\\log\\frost.log',
     every: hour,
+    hour: 15,
+    minute: 0,
+    day: 0,
+    catchUp: false,
   };
   const { command, args } = taskCommand(j);
   assert.equal(command, '"C:\\program files\\node.exe"');
@@ -162,18 +211,25 @@ test('Windows task preserves registration, least privilege, schedule, and paths'
   assert.match(args, /--cache-dir "C:\\cache & 100% !\\\\"/);
   assert.match(args, /--log-file "C:\\log\\frost.log"/);
 
-  // Tasks shorter than a day start at the current minute. Daily and weekly ones start at 03:17,
-  // and weekly means Sunday.
+  // Every task starts at its next run time and repeats daily or weekly. Under a day, each day's start
+  // repeats every N hours for that day, so the runs keep their clock times.
   const xml = taskXML(j, now);
-  assert.match(xml, /<StartBoundary>2026-10-04T11:18:00<\/StartBoundary>/);
-  assert.match(xml, /<Interval>PT1H<\/Interval>/);
+  assert.match(xml, /<StartBoundary>2026-10-04T12:00:00<\/StartBoundary>/);
+  assert.match(xml, /<Repetition>\n {8}<Interval>PT1H<\/Interval>\n {8}<Duration>P1D<\/Duration>/);
+  assert.match(xml, /<ScheduleByDay>/);
+  assert.match(xml, /Runs frost backup hourly at :00\./);
   assert.match(xml, /<Author>frost<\/Author>/);
   assert.match(xml, /<LogonType>InteractiveToken<\/LogonType>/);
   assert.match(xml, /<RunLevel>LeastPrivilege<\/RunLevel>/);
   assert.match(xml, /<MultipleInstancesPolicy>IgnoreNew<\/MultipleInstancesPolicy>/);
   assert.match(xml, /&amp;/);
-  assert.match(taskXML({ ...j, every: 24 * hour }, now), /2026-10-04T03:17:00/);
-  assert.match(taskXML({ ...j, every: 168 * hour }, now), /<Sunday\/>/);
+  const daily = taskXML({ ...j, every: 24 * hour }, now);
+  assert.match(daily, /<StartBoundary>2026-10-04T15:00:00<\/StartBoundary>/);
+  assert.doesNotMatch(daily, /<Repetition>/);
+  const weekly = taskXML({ ...j, every: 168 * hour, hour: 9, minute: 30, day: 3 }, now);
+  assert.match(weekly, /<StartBoundary>2026-10-07T09:30:00<\/StartBoundary>/);
+  assert.match(weekly, /<DaysOfWeek>\n {10}<Wednesday\/>/);
+  assert.match(weekly, /Runs frost backup weekly on Wednesday at 09:30\./);
 
   // Task XML is written as UTF-16LE with a byte order mark (FF FE).
   assert.equal(utf16File('<a>é😀</a>').subarray(2).toString('utf16le'), '<a>é😀</a>');
@@ -203,6 +259,8 @@ test('scheduler tests never run the real scheduler', async t => {
 
   await assert.rejects(scheduler.install({ ...job, binary: 'bad\npath' }), /line breaks/);
   await assert.rejects(scheduler.install({ ...job, every: 1 }), /at least an hour/);
+  for (const bad of [{ hour: 24 }, { minute: -1 }, { day: 7 }, { minute: 1.5 }])
+    await assert.rejects(scheduler.install({ ...job, ...bad }), /valid hour, minute and weekday/);
 });
 
 async function alias(source: string, destination: string, kind: 'hardlink' | 'symlink'): Promise<void> {

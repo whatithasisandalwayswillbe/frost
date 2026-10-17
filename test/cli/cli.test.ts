@@ -11,20 +11,25 @@ import { colorSequence, terminalProfile, convertProfile, type ColorProfile } fro
 import path from 'node:path';
 import os from 'node:os';
 import { execute } from '../../src/cli/index.js';
-import { type Hooks } from '../../src/cli/context.js';
+import { type Hooks, syncLaterCommand } from '../../src/cli/context.js';
 import { Format, statusLine, cellWidth, tildify, humanBytes, when } from '../../src/cli/format.js';
 import { phraseGrid } from '../../src/cli/key.js';
 import { probe, explainConnect } from '../../src/cli/connect.js';
 import { openScheduledLog, accessHint } from '../../src/cli/backup.js';
 import { updateStatePath } from '../../src/cli/update.js';
 import { knownPath, loadKnown } from '../../src/cli/known.js';
+import { desiredJob, loadRuns, rememberFinish, rememberStart, runsPath, scheduledDue } from '../../src/cli/runs.js';
+import { spawn } from 'node:child_process';
+import { Manifest } from '../../src/core/manifest.js';
+import { setTimeout as delay } from 'node:timers/promises';
 import { rerunCommand } from '../../src/cli/restore.js';
 import { Key } from '../../src/core/crypto.js';
 import { Repo, chunkKey } from '../../src/core/repo.js';
 import * as config from '../../src/core/config.js';
 import * as update from '../../src/platform/update.js';
 import { Memory } from '../support.js';
-import { APIError, errConditionalUnsupported } from '../../src/core/storage.js';
+import { APIError, PermafrostBackend, errConditionalUnsupported, request } from '../../src/core/storage.js';
+import { createServer, type AddressInfo } from 'node:net';
 import type { TestContext } from 'node:test';
 
 // Joins lines and ends with a newline, the way the CLI prints them.
@@ -48,6 +53,7 @@ async function fixture(t: TestContext) {
   const mem = new Memory();
   const key = Key.fromMaster(Buffer.alloc(32));
   const schedule: config.Config[] = [];
+  const later = { count: 0 };
   const hooks: Partial<Hooks> = {
     backend: () => mem,
     newKey: () => key,
@@ -57,6 +63,18 @@ async function fixture(t: TestContext) {
     },
     scheduleKind: async () => 'test scheduler',
     scheduleInstalled: async () => true,
+    // Every scheduled run is due unless a test decides otherwise. The decision has its own tests.
+    scheduledDue: async () => true,
+    // A fixed noon, hours from the init answers' 6-hourly runs at 03:00, 09:00, 15:00 and 21:00, so a backup
+    // typed in a terminal only asks first when a test sets the time.
+    clock: () => new Date(2026, 9, 17, 12, 0),
+    // Counts background processes a change waiting for a scheduled backup would start, without starting one.
+    syncLater: () => {
+      later.count++;
+      return undefined;
+    },
+    // Long before any recorded run, so a run counts as running while its process is there.
+    bootTime: () => 0,
     openBrowser: async () => {
       throw new Error('no browser in tests');
     },
@@ -118,7 +136,7 @@ async function fixture(t: TestContext) {
     else process.env.FROST_CACHE_DIR = oldCache;
     await rm(root, { recursive: true, force: true });
   });
-  return { root, src, conf, cache, mem, key, schedule, hooks, invoke, must, answers };
+  return { root, src, conf, cache, mem, key, schedule, later, hooks, invoke, must, answers };
 }
 
 // Uses the block helpers with colour off, so only the rail characters and spacing are compared.
@@ -975,4 +993,596 @@ test('the macOS access hint names what macOS asks about', () => {
   );
   assert.match(accessHint(false, runtime, { TERM_PROGRAM: 'iTerm.app' }), /allow iTerm, the app frost ran in/);
   assert.match(accessHint(false, runtime, {}), /allow the terminal app frost ran in\. /);
+});
+
+// Runs a command as if typed in a terminal, so `frost backup` can ask before it starts.
+async function interactive(f: Awaited<ReturnType<typeof fixture>>, args: string[], input: string) {
+  let stdout = '',
+    stderr = '';
+  const code = await execute(args, {
+    input,
+    inputTTY: true,
+    write: s => {
+      stdout += s;
+    },
+    error: s => {
+      stderr += s;
+    },
+    hooks: f.hooks,
+  });
+  return { code, stdout, stderr };
+}
+
+const snapshotCount = (f: Awaited<ReturnType<typeof fixture>>) =>
+  [...f.mem.objects.keys()].filter(k => k.startsWith('snapshots/')).length;
+
+// The fixture's init answers back up every 6 hours, counted from the default 15:00, so runs fall at 03:00,
+// 09:00, 15:00 and 21:00. A run that isn't due prints nothing, keeps no log and checks for no updates.
+test('scheduled runs back up once per run time, catch up a missed one and record how they ended', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  let now = new Date(2026, 9, 17, 15, 0, 20);
+  f.hooks.clock = () => now;
+  f.hooks.scheduledDue = scheduledDue;
+  let checks = 0;
+  f.hooks.latestRelease = async () => {
+    checks++;
+    throw new Error('no network in tests');
+  };
+  const log = path.join(f.root, 'frost.log');
+  const scheduled = async () => {
+    let stdout = '';
+    const code = await execute(['backup', '--scheduled', '--log-file', log], {
+      write: s => {
+        stdout += s;
+      },
+      error: () => {},
+      hooks: f.hooks,
+      version: 'v1.0.0',
+    });
+    assert.equal(code, 0);
+    return stdout;
+  };
+
+  assert.match(await scheduled(), /Saved snapshot/);
+  assert.equal(checks, 1);
+  const run = (await loadRuns()).run!;
+  assert.deepEqual(
+    { ...run, id: '' },
+    {
+      id: '',
+      started: now.toISOString(),
+      scheduled: true,
+      pid: process.pid,
+      finished: now.toISOString(),
+      ok: true,
+    },
+  );
+
+  // A second start for 15:00, then one after a backup by hand covered 21:00, both do nothing.
+  await rm(updateStatePath(), { force: true });
+  now = new Date(2026, 9, 17, 15, 5);
+  assert.equal(await scheduled(), '');
+  now = new Date(2026, 9, 17, 20, 59, 30);
+  await f.must(['backup']);
+  now = new Date(2026, 9, 17, 21, 0, 10);
+  assert.equal(await scheduled(), '');
+  assert.equal((await readFile(log, 'utf8')).match(/scheduled backup starting/g)!.length, 1);
+  assert.equal(checks, 1);
+
+  // The computer was off from 21:00 until 10:00. The first start backs up once for 03:00 and 09:00.
+  now = new Date(2026, 9, 18, 10, 0);
+  assert.match(await scheduled(), /scheduled backup starting/);
+  now = new Date(2026, 9, 18, 10, 15);
+  assert.equal(await scheduled(), '');
+
+  // With catch-up off, a late start skips the run it missed, and the next run on time backs up.
+  await f.must(['config', 'set', 'schedule.catch_up', 'false']);
+  now = new Date(2026, 9, 18, 16, 0);
+  assert.equal(await scheduled(), '');
+  now = new Date(2026, 9, 18, 21, 3);
+  assert.match(await scheduled(), /scheduled backup starting/);
+});
+
+test('a backup by hand asks first near a scheduled backup', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  let now = new Date(2026, 9, 17, 14, 20);
+  f.hooks.clock = () => now;
+
+  // Saying no saves nothing and stops like a declined restore. The question sits in the backup block.
+  const declined = await interactive(f, ['backup'], 'n\n');
+  assert.equal(declined.code, 1);
+  assert.match(declined.stderr, /cancelled/);
+  assert.match(
+    declined.stdout,
+    /┌ {2}backup {2}memory\n│\n│ {2}A scheduled backup starts in 40m, at 15:00\.\n│ {2}Back up now anyway\? \[Y\/n\] /,
+  );
+  assert.equal(snapshotCount(f), 0);
+
+  // Enter goes ahead, and the result continues in the same block.
+  const accepted = await interactive(f, ['backup'], '\n');
+  assert.equal(accepted.code, 0, accepted.stderr);
+  assert.equal(accepted.stdout.match(/┌/g)!.length, 1);
+  assert.match(accepted.stdout, /Back up now anyway\? \[Y\/n\] │\n│ {2}files .*\n[^]*Saved snapshot/);
+  assert.equal(snapshotCount(f), 1);
+
+  // Under a minute away, it gives only the time.
+  now = new Date(2026, 9, 17, 14, 59, 30);
+  assert.match((await interactive(f, ['backup'], 'n\n')).stdout, /A scheduled backup starts at 15:00\./);
+
+  // Nothing is asked without a terminal, for a dry run, for chosen folders, or when the job is missing or off.
+  assert.ok(!(await f.must(['backup'])).includes('scheduled backup'));
+  assert.ok(!(await interactive(f, ['backup', '--dry-run'], '')).stdout.includes('scheduled backup'));
+  assert.ok(!(await interactive(f, ['backup', f.src], '')).stdout.includes('scheduled backup'));
+  f.hooks.scheduleInstalled = async () => false;
+  assert.ok(!(await interactive(f, ['backup'], '')).stdout.includes('scheduled backup'));
+  f.hooks.scheduleInstalled = async () => true;
+
+  // After a scheduled backup that worked, it says when that finished. A backup by hand since then, or a
+  // failed scheduled one, means there's nothing to ask.
+  const id = await rememberStart(true, new Date(2026, 9, 17, 15, 0));
+  await rememberFinish(id, true, new Date(2026, 9, 17, 15, 20));
+  now = new Date(2026, 9, 17, 16, 0);
+  assert.match((await interactive(f, ['backup'], 'n\n')).stdout, /A scheduled backup finished 40m ago\./);
+  assert.equal((await interactive(f, ['backup'], 'y\n')).code, 0);
+  assert.ok(!(await interactive(f, ['backup'], '')).stdout.includes('scheduled backup'));
+  const failed = await rememberStart(true, new Date(2026, 9, 17, 15, 0));
+  await rememberFinish(failed, false, new Date(2026, 9, 17, 15, 20));
+  assert.ok(!(await interactive(f, ['backup'], '')).stdout.includes('scheduled backup'));
+
+  await f.must(['config', 'set', 'schedule.enabled', 'false']);
+  now = new Date(2026, 9, 17, 20, 30);
+  assert.ok(!(await interactive(f, ['backup'], '')).stdout.includes('scheduled backup'));
+});
+
+// Both kinds of backup take the manifest's lock. A backup by hand that finds a scheduled one running says
+// so, and a scheduled run waits past the usual second for a backup by hand to finish.
+test('backups by hand and scheduled backups take turns with the backups', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  await f.must(['backup']);
+  const file = path.join(f.cache, 'manifest-' + (await loadKnown()).repo_id + '.jsonl');
+  f.hooks.clock = () => new Date(2026, 9, 17, 15, 5);
+
+  let held = await Manifest.open(file);
+  try {
+    assert.match(
+      (await f.invoke(['backup'])).stderr,
+      /a backup or restore is already running, try again when it's done/,
+    );
+    await rememberStart(true, new Date(2026, 9, 17, 15, 0));
+    const busy = await f.invoke(['backup']);
+    assert.equal(busy.code, 1);
+    assert.match(busy.stderr, /a scheduled backup is already running \(started 5m ago\), try again when it's done/);
+  } finally {
+    await held.close();
+  }
+
+  held = await Manifest.open(file);
+  const waiting = f.invoke(['backup', '--scheduled']);
+  await delay(1500);
+  await held.close();
+  const result = await waiting;
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /Already backed up/);
+});
+
+// A computer that just woke often has no network yet. Scheduled runs try again for about 5 minutes, a
+// backup by hand fails at once, and an error that isn't about reaching storage never waits.
+test('scheduled runs wait for the network, and other failures stop at once', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  const waits: number[] = [];
+  f.hooks.wait = async ms => {
+    waits.push(ms);
+  };
+  let failures = 2;
+  f.mem.beforeGet = async () => {
+    if (failures-- > 0) throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9000'), { code: 'ECONNREFUSED' });
+  };
+  await f.must(['backup', '--scheduled']);
+  assert.deepEqual(waits, [10_000, 20_000]);
+
+  failures = 1;
+  waits.length = 0;
+  assert.match((await f.invoke(['backup'])).stderr, /ECONNREFUSED/);
+  assert.deepEqual(waits, []);
+
+  failures = Infinity;
+  assert.match((await f.invoke(['backup', '--scheduled'])).stderr, /ECONNREFUSED/);
+  assert.deepEqual(waits, [10_000, 20_000, 40_000, 80_000, 150_000]);
+
+  waits.length = 0;
+  f.mem.beforeGet = async () => {
+    throw new Error('access denied');
+  };
+  assert.match((await f.invoke(['backup', '--scheduled'])).stderr, /access denied/);
+  assert.deepEqual(waits, []);
+});
+
+// The real Permafrost client, pointed at a loopback port where nothing listens, gives up after its own
+// attempts with the connection error. A scheduled run sees it as offline and waits; its pauses are skipped.
+test('scheduled runs recognise a refused connection from the real storage client', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  const server = createServer();
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise(resolve => server.close(resolve));
+
+  f.hooks.backend = () => new PermafrostBackend('http://127.0.0.1:' + port, 'REFERENCE-ONLY', request, async () => {});
+  const waits: number[] = [];
+  f.hooks.wait = async ms => {
+    waits.push(ms);
+  };
+  const result = await f.invoke(['backup', '--scheduled']);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /ECONNREFUSED/);
+  assert.deepEqual(waits, [10_000, 20_000, 40_000, 80_000, 150_000]);
+});
+
+// Replaces text in config.toml the way a text editor would, outside frost.
+async function handEdit(from: string, to: string) {
+  const file = config.configPath();
+  const raw = await readFile(file, 'utf8');
+  assert.ok(raw.includes(from), from);
+  await writeFile(file, raw.replace(from, to));
+}
+
+// A schedule changed in config.toml outside frost updates the job before the next command runs, with a line
+// saying so. Commands that find nothing changed say nothing, and `config get` stays bare for scripts.
+test('commands bring the scheduled job in line with hand edits to config.toml', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  assert.equal(f.schedule.length, 1);
+
+  await handEdit('every = "6h"', 'every = "daily"');
+  assert.equal((await f.must(['config', 'get', 'schedule.every'])).trim(), 'daily');
+  assert.equal(f.schedule.length, 1);
+  assert.match(await f.must(['status']), /^\nconfig\.toml changed\. Scheduled job updated: daily\.\n\n┌ {2}frost/);
+  assert.equal(f.schedule.length, 2);
+  assert.equal(f.schedule[1].schedule.every, 'daily');
+  assert.ok(!(await f.must(['status'])).includes('config.toml changed'));
+
+  // A setting that's wrong is reported on every command until it's fixed, and the job stays as it was.
+  await handEdit('time = "15:00"', 'time = "noon"');
+  const wrong = await f.must(['status']);
+  assert.match(
+    wrong,
+    /^\nconfig\.toml changed, but updating the scheduled job failed: schedule\.time must be a 24-hour time/,
+  );
+  assert.match(wrong, /next backup\s+schedule\.time must be a 24-hour time/);
+  assert.equal(f.schedule.length, 2);
+  await handEdit('time = "noon"', 'time = "09:30"');
+
+  // A scheduler that refuses doesn't stop the command.
+  f.hooks.syncSchedule = async () => {
+    throw new Error('scheduler refused');
+  };
+  const refused = await f.must(['backup']);
+  assert.match(
+    refused,
+    /^\nconfig\.toml changed, but updating the scheduled job failed: scheduler refused\n\n┌ {2}backup/,
+  );
+  assert.match(refused, /Saved snapshot/);
+  f.hooks.syncSchedule = async c => {
+    f.schedule.push(structuredClone(c));
+  };
+
+  // `config set` applies an earlier hand edit before its own change.
+  const set = await f.must(['config', 'set', 'verify.sample', '5']);
+  assert.match(set, /^\nconfig\.toml changed\. Scheduled job updated: daily\.\n\n┌ {2}config/);
+  assert.equal(f.schedule.at(-1)!.schedule.time, '09:30');
+
+  // Turning automatic backups off by hand removes the job.
+  await handEdit('enabled = true', 'enabled = false');
+  assert.match(await f.must(['config']), /^\nconfig\.toml changed\. Scheduled job removed\.\n/);
+  assert.equal(f.schedule.at(-1)!.schedule.enabled, false);
+});
+
+// A scheduled run decides from config.toml as it is, so a job left over after automatic backups were turned
+// off by hand does nothing. On Linux the run also updates its own job; launchd and Task Scheduler jobs wait
+// for the next command, since replacing them would stop the run.
+test('scheduled runs follow hand edits to config.toml', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  f.hooks.clock = () => new Date(2026, 9, 17, 15, 0, 20);
+  f.hooks.scheduledDue = scheduledDue;
+
+  await handEdit('every = "6h"', 'every = "daily"');
+  f.hooks.scheduleKind = async () => 'launchd';
+  const untouched = await f.invoke(['backup', '--scheduled']);
+  assert.equal(untouched.code, 0, untouched.stderr);
+  assert.ok(!untouched.stdout.includes('config.toml changed'));
+  assert.equal(f.schedule.length, 1);
+
+  f.hooks.scheduleKind = async () => 'cron';
+  const updated = await f.must(['backup', '--scheduled']);
+  assert.match(updated, /^\[[^\]]+\] config\.toml changed\. Scheduled job updated: daily\.\n/);
+  assert.equal(f.schedule.length, 2);
+
+  // Turned off by hand, the run does nothing, and removing the job waits for a command.
+  await handEdit('enabled = true', 'enabled = false');
+  assert.equal(await f.must(['backup', '--scheduled']), '');
+  assert.equal(f.schedule.length, 2);
+});
+
+// The next backup follows the calendar, so a backup by hand doesn't move it. A run time that passed moments
+// ago is starting soon, and one missed is overdue while catch-up is on.
+test("status shows the next run time the schedule hasn't covered", async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  let now = new Date(2026, 9, 17, 12, 0);
+  f.hooks.clock = () => now;
+  const next = async () => /next backup\s+(\S+(?: \S+)?)/.exec(await f.must(['status']))![1];
+
+  assert.equal(await next(), 'soon');
+  await f.must(['backup']);
+  assert.equal(await next(), '~in 3h');
+  now = new Date(2026, 9, 17, 15, 4);
+  assert.equal(await next(), 'soon');
+  now = new Date(2026, 9, 17, 16, 0);
+  assert.equal(await next(), '~overdue');
+  await f.must(['config', 'set', 'schedule.catch_up', 'false']);
+  assert.equal(await next(), '~in 5h');
+});
+
+// A storage location changed in config.toml outside frost gets the checks `config edit` would show, the
+// first time a command uses it. Problems that stop it opening are left to the command's own error.
+test('a hand-edited storage location is checked the first time it is used', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  await f.must(['backup']);
+  const other = new Memory();
+  other.place = 'memory-2';
+  other.toString = () => 'memory-2';
+  f.hooks.backend = s => (s.s3.bucket === 'other' ? other : f.mem);
+
+  // Only frost.repo was copied, so the snapshots stay behind.
+  other.objects.set('frost.repo', f.mem.objects.get('frost.repo')!);
+  await handEdit('bucket = "backups"', 'bucket = "other"');
+  const moved = await f.must(['status']);
+  assert.match(
+    moved,
+    /^\nconfig\.toml changed where backups go\. memory-2 has your frost\.repo but none of your snapshots\. Move chunks\/, snapshots\/ and trees\/ there too\.\n\n┌/,
+  );
+  assert.ok(!(await f.must(['status'])).includes('config.toml changed'));
+
+  // Different backups made with the same key are pointed out once.
+  await handEdit('bucket = "other"', 'bucket = "backups"');
+  await f.must(['status']);
+  other.objects.clear();
+  await Repo.init(other, f.key);
+  await handEdit('bucket = "backups"', 'bucket = "other"');
+  assert.match(
+    await f.must(['status']),
+    /^\nconfig\.toml changed where backups go\. Those are different backups from the ones in memory\./,
+  );
+
+  // An empty location fails as before, with no line of its own.
+  await handEdit('bucket = "other"', 'bucket = "empty"');
+  f.hooks.backend = s => (s.s3.bucket === 'empty' ? new Memory() : s.s3.bucket === 'other' ? other : f.mem);
+  const empty = await f.invoke(['status']);
+  assert.equal(empty.code, 1);
+  assert.ok(!empty.stdout.includes('config.toml changed'));
+
+  // A change made with `config set` was checked then, so using it says nothing more.
+  await handEdit('bucket = "empty"', 'bucket = "backups"');
+  await f.must(['status']);
+  await f.must(['config', 'set', 'storage.s3.bucket', 'other']);
+  assert.ok(!(await f.must(['status'])).includes('config.toml changed'));
+});
+
+// Replacing a launchd job stops the backup it's running, so while a scheduled backup runs, updating the job
+// waits for the first command after it. A run that never finished stops holding it back after 6 hours.
+test('a running scheduled backup holds back updating its job', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  let now = new Date(2026, 9, 17, 15, 30);
+  f.hooks.clock = () => now;
+  const id = await rememberStart(true, new Date(2026, 9, 17, 15, 0));
+
+  // A hand edit is reported once, starts one background process, and leaves the job alone.
+  await handEdit('every = "6h"', 'every = "daily"');
+  assert.match(
+    await f.must(['status']),
+    /^\nconfig\.toml changed\. The scheduled job updates once the running backup finishes\.\n\n┌/,
+  );
+  assert.ok(!(await f.must(['status'])).includes('config.toml changed'));
+  assert.equal(f.schedule.length, 1);
+  assert.equal(f.later.count, 1);
+
+  // Once the backup finishes, the next command applies it, if the background process hasn't.
+  await rememberFinish(id, true, new Date(2026, 9, 17, 15, 40));
+  assert.match(await f.must(['status']), /config\.toml changed\. Scheduled job updated: daily\./);
+  assert.equal(f.schedule.length, 2);
+
+  // A backup whose process is still there holds the job back however long it takes, and stops when the
+  // process goes, though it never recorded its end.
+  const long = await rememberStart(true, new Date(2026, 9, 17, 16, 0));
+  await handEdit('every = "daily"', 'every = "12h"');
+  now = new Date(2026, 9, 18, 15, 0);
+  assert.match(await f.must(['status']), /The scheduled job updates once the running backup finishes\./);
+  assert.equal(f.schedule.length, 2);
+  await rememberFinish(long, false, new Date(2026, 9, 18, 15, 5));
+  await deadRun(new Date(2026, 9, 18, 15, 10));
+  assert.match(await f.must(['status']), /config\.toml changed\. Scheduled job updated: 12h\./);
+  assert.equal(f.schedule.length, 3);
+});
+
+// Records a scheduled backup that started at `time` in a process that has since exited.
+async function deadRun(time: Date) {
+  const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' });
+  await new Promise(resolve => child.once('exit', resolve));
+  await rememberStart(true, time);
+  const file = runsPath();
+  const runs = JSON.parse(await readFile(file, 'utf8'));
+  runs.run.pid = child.pid;
+  await writeFile(file, JSON.stringify(runs));
+}
+
+// Every command that changes the schedule waits for a running scheduled backup instead of replacing its
+// job, says so, and starts the background process that applies the change once the backup finishes.
+test('config set, config edit and init wait for a running scheduled backup', async t => {
+  const f = await fixture(t);
+  f.hooks.clock = () => new Date(2026, 9, 17, 15, 30);
+  const id = await rememberStart(true, new Date(2026, 9, 17, 15, 0));
+  assert.match(
+    await f.must(['init'], f.answers),
+    /schedule {5}6h via test scheduler, once the running backup finishes/,
+  );
+  assert.equal(f.schedule.length, 0);
+  assert.equal(f.later.count, 1);
+
+  assert.match(
+    await f.must(['config', 'set', 'schedule.every', 'daily']),
+    /Saved\. The scheduled job updates once the running backup finishes\.\n/,
+  );
+  assert.match(
+    await f.must(['config', 'set', 'schedule.enabled', 'false']),
+    /Saved\. The scheduled job is removed once the running backup finishes\.\n/,
+  );
+  f.hooks.openEditor = async (_command, file) => {
+    await writeFile(file, (await readFile(file, 'utf8')).replace('enabled = false', 'enabled = true'));
+  };
+  assert.match(
+    await f.must(['config', 'edit'], 'yes\n'),
+    /Saved\. The scheduled job updates once the running backup finishes\.\n/,
+  );
+  assert.equal(f.schedule.length, 0);
+  assert.equal(f.later.count, 4);
+  assert.equal((await loadRuns()).pending, desiredJob(config.parse(await readFile(config.configPath())).schedule));
+
+  // Setting a value again while the job is missing reinstalls it later too.
+  f.hooks.scheduleInstalled = async () => false;
+  assert.match(
+    await f.must(['config', 'set', 'schedule.enabled', 'true']),
+    /The scheduled job is reinstalled once the running backup finishes\.\n/,
+  );
+  assert.equal(f.schedule.length, 0);
+
+  // A finished backup, or one whose process has gone, no longer holds anything back.
+  await rememberFinish(id, true, new Date(2026, 9, 17, 15, 40));
+  assert.match(await f.must(['config', 'set', 'schedule.time', '09:00']), /Saved\. Scheduled job updated: daily\./);
+  assert.equal(f.schedule.length, 1);
+  assert.equal((await loadRuns()).pending, undefined);
+  await deadRun(new Date(2026, 9, 17, 15, 20));
+  assert.match(await f.must(['config', 'set', 'schedule.time', '10:00']), /Saved\. Scheduled job updated: daily\./);
+  assert.equal(f.schedule.length, 2);
+});
+
+// The background process checks until no scheduled backup is running, then applies config.toml as it is.
+// With config.toml gone, it removes the job and leaves nothing in the cache.
+test('the background process applies the change once the backup finishes', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  f.hooks.clock = () => new Date(2026, 9, 17, 15, 30);
+  const id = await rememberStart(true, new Date(2026, 9, 17, 15, 0));
+  await f.must(['config', 'set', 'schedule.every', 'daily']);
+  assert.equal(f.schedule.length, 1);
+
+  const waits: number[] = [];
+  f.hooks.wait = async ms => {
+    waits.push(ms);
+    if (waits.length === 3) await rememberFinish(id, true, new Date(2026, 9, 17, 15, 45));
+  };
+  const background = await f.invoke(['config', '--after-backup']);
+  assert.deepEqual(background, { code: 0, stdout: '', stderr: '' });
+  assert.deepEqual(waits, [15_000, 15_000, 15_000]);
+  assert.equal(f.schedule.length, 2);
+  assert.equal(f.schedule[1].schedule.every, 'daily');
+  assert.equal((await loadRuns()).pending, undefined);
+
+  // Nothing left to do, so a second one returns at once.
+  assert.equal((await f.invoke(['config', '--after-backup'])).code, 0);
+  assert.equal(f.schedule.length, 2);
+
+  // frost was uninstalled while the backup ran: the job goes, and the cache stays empty.
+  await rm(f.conf, { recursive: true, force: true });
+  await rm(f.cache, { recursive: true, force: true });
+  assert.equal((await f.invoke(['config', '--after-backup'])).code, 0);
+  assert.equal(f.schedule.length, 3);
+  assert.equal(f.schedule[2].schedule.enabled, false);
+  await assert.rejects(readFile(runsPath()), { code: 'ENOENT' });
+});
+
+// A backup by hand only names a scheduled backup as the one running while its process is there.
+test('a scheduled backup that died is not named as running', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  await f.must(['backup']);
+  const file = path.join(f.cache, 'manifest-' + (await loadKnown()).repo_id + '.jsonl');
+  f.hooks.clock = () => new Date(2026, 9, 17, 15, 5);
+  await deadRun(new Date(2026, 9, 17, 15, 0));
+  const held = await Manifest.open(file);
+  try {
+    const busy = await f.invoke(['backup']);
+    assert.match(busy.stderr, /a backup or restore is already running, try again when it's done/);
+  } finally {
+    await held.close();
+  }
+});
+
+test('the background process runs frost again with the internal flag', () => {
+  const [command, args] = syncLaterCommand();
+  assert.equal(command, process.execPath);
+  assert.deepEqual(args.slice(1), ['config', '--after-backup']);
+  assert.match(args[0], /(main\.js|launch\.mjs)$/);
+});
+
+// Replacing a systemd timer or a crontab line never stops a running backup, so changes there don't wait.
+// A change undone while it waited leaves nothing to do once the backup finishes.
+test('only launchd and Task Scheduler jobs wait, and an undone change settles', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  f.hooks.clock = () => new Date(2026, 9, 17, 15, 30);
+  const id = await rememberStart(true, new Date(2026, 9, 17, 15, 0));
+
+  f.hooks.scheduleKind = async () => 'cron';
+  assert.match(await f.must(['config', 'set', 'schedule.every', 'daily']), /Saved\. Scheduled job updated: daily\./);
+  f.hooks.scheduleKind = async () => 'systemd';
+  assert.match(await f.must(['config', 'set', 'schedule.every', '12h']), /Saved\. Scheduled job updated: 12h\./);
+  assert.equal(f.schedule.length, 3);
+  assert.equal(f.later.count, 0);
+
+  f.hooks.scheduleKind = async () => 'launchd';
+  assert.match(await f.must(['config', 'set', 'schedule.enabled', 'false']), /is removed once the running backup/);
+  assert.match(
+    await f.must(['config', 'set', 'schedule.enabled', 'true']),
+    /The scheduled job updates once the running backup/,
+  );
+  assert.equal(f.later.count, 2);
+  await rememberFinish(id, true, new Date(2026, 9, 17, 15, 45));
+  assert.equal((await f.invoke(['config', '--after-backup'])).code, 0);
+  assert.equal(f.schedule.length, 3);
+  assert.equal((await loadRuns()).pending, undefined);
+});
+
+// One background process applies config.toml as it is when the backup finishes, so while it's there, later
+// changes don't start another.
+test('changes waiting on the same backup share one background process', async t => {
+  const f = await fixture(t);
+  await f.must(['init'], f.answers);
+  f.hooks.clock = () => new Date(2026, 9, 17, 15, 30);
+  await rememberStart(true, new Date(2026, 9, 17, 15, 0));
+  f.hooks.syncLater = () => {
+    f.later.count++;
+    return process.pid;
+  };
+  await f.must(['config', 'set', 'schedule.every', 'daily']);
+  await f.must(['config', 'set', 'schedule.time', '09:00']);
+  await f.must(['config', 'set', 'schedule.day', 'monday']);
+  assert.equal(f.later.count, 1);
+  assert.equal((await loadRuns()).waiter, process.pid);
+
+  // A background process that has gone is replaced.
+  await deadRun(new Date(2026, 9, 17, 15, 0));
+  const runs = JSON.parse(await readFile(runsPath(), 'utf8'));
+  await writeFile(
+    runsPath(),
+    JSON.stringify({ ...runs, waiter: runs.run.pid, run: { ...runs.run, pid: process.pid } }),
+  );
+  await f.must(['config', 'set', 'schedule.time', '10:00']);
+  assert.equal(f.later.count, 2);
 });

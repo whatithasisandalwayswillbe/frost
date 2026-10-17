@@ -23,7 +23,8 @@ function fixtureModel(f: any): BrowserModel {
   const cfg: Config = {
     paths: c.Paths ?? [],
     exclude: c.Exclude ?? [],
-    schedule: { enabled: c.Schedule.Enabled, every: c.Schedule.Every },
+    // The captures predate the schedule's time, day and catch-up settings, which the browser doesn't show.
+    schedule: { enabled: c.Schedule.Enabled, every: c.Schedule.Every, time: '15:00', day: 'sunday', catch_up: true },
     verify: { sample: c.Verify.Sample },
     update: { auto: c.Update.Auto },
     storage: {

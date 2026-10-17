@@ -2,6 +2,7 @@
 // that tests replace. `openApp` opens the config, key, storage and manifest for commands that need them.
 
 import { Readable } from 'node:stream';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as config from '../core/config.js';
@@ -14,6 +15,7 @@ import * as schedule from '../platform/schedule.js';
 import * as update from '../platform/update.js';
 import * as desktop from '../platform/desktop.js';
 import { readFile, mkdir } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { Format, type Writer } from './format.js';
 import { Prompter } from './prompt.js';
 import { code } from '../engine/types.js';
@@ -21,8 +23,10 @@ import { version } from './version.js';
 import { terminalProfile, type ColorProfile } from './terminal.js';
 import { enableANSI, type ConsoleState } from '../platform/console.js';
 import { rememberStorage, cantOpen } from './known.js';
+import { bootTime, rememberInstall, scheduledDue } from './runs.js';
 
 export const errNoKey = new Error('no key on this machine, run `frost init` or `frost key import`');
+export const errBusy = new Error("a backup or restore is already running, try again when it's done");
 
 // What a command gets from `openApp`. `close` releases the manifest and its lock.
 interface App {
@@ -31,14 +35,19 @@ interface App {
   close: () => Promise<void>;
 }
 
-// Everything that reaches outside the process: storage, the scheduler, editors, the browser and updates.
-// Tests replace these so they never touch the real machine.
+// Everything that reaches outside the process: storage, the scheduler, editors, the browser, updates and the
+// clock. Tests replace these so they never touch the real machine.
 export interface Hooks {
   enableANSI: () => ConsoleState;
   backend: (storage: config.Storage) => Backend;
   syncSchedule: (cfg: config.Config) => Promise<void>;
   scheduleKind: () => Promise<string>;
   scheduleInstalled: () => Promise<boolean>;
+  scheduledDue: (now: Date) => Promise<boolean>;
+  syncLater: () => number | undefined;
+  bootTime: () => number;
+  clock: () => Date;
+  wait: (ms: number, signal?: AbortSignal) => Promise<void>;
   newKey: () => Key;
   pickWords: () => [number, number];
   openEditor: (command: string[], file: string) => Promise<void>;
@@ -54,24 +63,38 @@ export interface Hooks {
   setup?: (ctx: Context, cfg: config.Config, existing: boolean, local?: Key) => Promise<void>;
 }
 
+// The script frost runs itself with. An installed package uses its launcher, which always runs the active
+// version. A source build uses this main.js directly.
+const frostScript = () =>
+  process.env.FROST_APP_ROOT
+    ? path.join(process.env.FROST_APP_ROOT, 'launch.mjs')
+    : fileURLToPath(new URL('./main.js', import.meta.url));
+
+// The command for the background process that applies a schedule change once a running scheduled backup
+// finishes. It inherits the environment, which holds the config and cache folders.
+export const syncLaterCommand = (): [string, string[]] => [
+  process.execPath,
+  [frostScript(), 'config', '--after-backup'],
+];
+
 function defaultHooks(): Hooks {
   return {
     enableANSI,
     backend: newBackend,
 
-    // An installed package schedules its launcher, which always runs the active version. A source build
-    // schedules this script directly.
+    // The install time is recorded first, so a run the install starts straight away, like launchd's at load,
+    // doesn't count as catching up.
     syncSchedule: async cfg => {
       if (!cfg.schedule.enabled) await schedule.remove();
       else {
+        const times = config.times(cfg.schedule);
         await mkdir(config.cacheDir(), { recursive: true, mode: 0o700 });
-        const script = process.env.FROST_APP_ROOT
-          ? path.join(process.env.FROST_APP_ROOT, 'launch.mjs')
-          : fileURLToPath(new URL('./main.js', import.meta.url));
+        await rememberInstall(new Date());
         await schedule.install({
           binary: process.execPath,
-          script,
-          every: config.interval(cfg.schedule.every),
+          script: frostScript(),
+          ...times,
+          catchUp: cfg.schedule.catch_up,
           configDir: path.resolve(config.dir()),
           cacheDir: path.resolve(config.cacheDir()),
           logFile: path.resolve(config.cacheDir(), 'frost.log'),
@@ -80,6 +103,22 @@ function defaultHooks(): Hooks {
     },
     scheduleKind: schedule.kind,
     scheduleInstalled: schedule.installed,
+    scheduledDue,
+
+    // Detached from this process and its terminal, so it outlives both, with no window and no output.
+    // Returns its process id.
+    syncLater: () => {
+      const [command, args] = syncLaterCommand();
+      const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
+      child.on('error', () => {});
+      child.unref();
+      return child.pid;
+    },
+    bootTime,
+    clock: () => new Date(),
+    wait: async (ms, signal) => {
+      await delay(ms, undefined, { signal });
+    },
     newKey: Key.new,
 
     // Two different positions in the 24-word phrase, in order, to quiz after showing a new phrase.
@@ -216,8 +255,9 @@ export class Context {
   }
 
   // Opens the repository and its manifest. If the storage has no repository or a different key, the error
-  // says where this machine's backups were last seen.
-  async openApp(): Promise<App> {
+  // says where this machine's backups were last seen. `lockWait` is how long to wait for another frost
+  // process to finish with the manifest.
+  async openApp(lockWait = 1000): Promise<App> {
     const cfg = await config.load();
     const key = await this.loadKey();
     const backend = this.hooks.backend(cfg.storage);
@@ -243,10 +283,13 @@ export class Context {
     // The manifest's lock keeps a second frost process out of this repository's cache.
     let manifest: Manifest;
     try {
-      manifest = await Manifest.open(path.join(config.cacheDir(), 'manifest-' + repo.info.id + '.jsonl'));
+      manifest = await Manifest.open(
+        path.join(config.cacheDir(), 'manifest-' + repo.info.id + '.jsonl'),
+        lockWait,
+        this.signal,
+      );
     } catch (e) {
-      if ((e as Error).message.includes('another frost process'))
-        throw new Error("a backup or restore is already running, try again when it's done");
+      if ((e as Error).message.includes('another frost process')) throw errBusy;
       throw e;
     }
 

@@ -12,6 +12,7 @@ import { runConfig } from './config.js';
 import { runKey } from './key.js';
 import { runUpdate } from './update.js';
 import { runInit } from './init.js';
+import { applyConfigEdits, syncAfterBackup } from './sync.js';
 
 export { Context, type ContextOptions };
 
@@ -36,7 +37,7 @@ const defs: Record<string, Record<string, 'bool' | 'value' | 'array'>> = {
   restore: { beside: 'bool', to: 'value', overwrite: 'bool', yes: 'bool' },
   status: { verify: 'bool', all: 'bool' },
   browse: {},
-  config: { 'show-secrets': 'bool' },
+  config: { 'show-secrets': 'bool', 'after-backup': 'bool' },
   key: {},
   update: { check: 'bool' },
 };
@@ -153,6 +154,20 @@ export async function run(argv: string[], ctx = new Context()): Promise<void> {
   if (['init', 'backup', 'status', 'browse', 'update'].includes(p.command) && p.args.length)
     throw new Error(`unknown command ${JSON.stringify(p.args[0])} for "frost ${p.command}"`);
   if (p.command === 'key' && p.args.length !== 1) throw new Error(`accepts 1 arg(s), received ${p.args.length}`);
+
+  // The background process that applies a schedule change once a running scheduled backup finishes. Help
+  // leaves its flag out, like backup's --scheduled.
+  if (p.command === 'config' && bool(p, 'after-backup')) return syncAfterBackup(ctx);
+
+  // Changes made to config.toml outside frost take effect before the command runs. init writes its own
+  // settings, `config get` prints only the value for scripts, and a scheduled backup applies them itself.
+  const action = p.args[0] ?? '';
+  if (p.command !== 'init' && !(p.command === 'config' && action === 'get') && !bool(p, 'scheduled'))
+    await applyConfigEdits(
+      ctx,
+      ['backup', 'restore', 'status', 'browse'].includes(p.command) ||
+        (p.command === 'key' && ['verify', 'import'].includes(action)),
+    );
 
   switch (p.command) {
     case 'init':

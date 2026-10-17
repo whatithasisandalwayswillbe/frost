@@ -3,7 +3,7 @@
 
 import TOML from '@iarna/toml';
 import { mkdir, open, readFile, rename, unlink, stat } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { type S3Config } from './storage.js';
@@ -12,7 +12,7 @@ export { newBackend } from './storage.js';
 export interface Config {
   paths: string[];
   exclude: string[];
-  schedule: { enabled: boolean; every: string };
+  schedule: { enabled: boolean; every: string; time: string; day: string; catch_up: boolean };
   verify: { sample: number };
   update: { auto: boolean };
   storage: { backend: string; s3: S3Config; permafrost: { url: string; token: string } };
@@ -24,13 +24,15 @@ export type Storage = Config['storage'];
 const defaultPrefix = 'frost';
 // Intervals offered to users. interval() also accepts 1h, 24h and 168h.
 export const intervals = ['hourly', '2h', '3h', '4h', '6h', '8h', '12h', 'daily', 'weekly'];
+// The days schedule.day accepts, in the order schedulers number them from 0.
+export const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 export const errNoConfig = new Error("frost isn't set up yet, run `frost init`");
 
 export function defaultConfig(): Config {
   return {
     paths: [],
     exclude: ['.DS_Store', 'Thumbs.db', '*.tmp', '*.swp', 'node_modules', '.cache'],
-    schedule: { enabled: true, every: 'daily' },
+    schedule: { enabled: true, every: 'daily', time: '15:00', day: 'sunday', catch_up: true },
     verify: { sample: 20 },
     update: { auto: true },
     storage: {
@@ -70,17 +72,42 @@ export function interval(value: string): number {
   return hours[clean] * 3600e3;
 }
 
+// Converts schedule.time, a 24-hour local time like 15:00 or 9:30, to an hour and minute.
+export function timeOfDay(value: string): { hour: number; minute: number } {
+  const m = /^(\d{1,2}):(\d\d)$/.exec(value.trim());
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59)
+    throw new Error('schedule.time must be a 24-hour time, like 15:00 or 09:30');
+  return { hour: Number(m[1]), minute: Number(m[2]) };
+}
+
+// Converts schedule.day to a weekday number, 0 for Sunday.
+export function weekday(value: string): number {
+  const day = days.indexOf(value.trim().toLowerCase());
+  if (day < 0) throw new Error('schedule.day must be a day of the week, like sunday');
+  return day;
+}
+
+// The schedule as numbers: the interval in milliseconds, the hour and minute runs are counted from, and
+// the weekday of weekly runs.
+export function times(s: Config['schedule']): { every: number; hour: number; minute: number; day: number } {
+  return { every: interval(s.every), ...timeOfDay(s.time), day: weekday(s.day) };
+}
+
 // Reports every problem at once, one per line, so the user can fix them in one pass.
 export function validate(c: Config): void {
   const errors: string[] = [];
   if (!c.paths.length) errors.push('paths is empty: add at least one directory to back up');
-  if (c.schedule.enabled) {
-    try {
-      interval(c.schedule.every);
-    } catch (error) {
-      errors.push((error as Error).message);
-    }
-  }
+  if (c.schedule.enabled)
+    for (const check of [
+      () => interval(c.schedule.every),
+      () => timeOfDay(c.schedule.time),
+      () => weekday(c.schedule.day),
+    ])
+      try {
+        check();
+      } catch (error) {
+        errors.push((error as Error).message);
+      }
   if (c.verify.sample < 0) errors.push("verify.sample can't be negative");
   if (c.storage.backend === 's3') {
     if (!c.storage.s3.endpoint || !c.storage.s3.bucket) errors.push('storage.s3 needs an endpoint and a bucket');
@@ -113,6 +140,11 @@ export function cacheDir(): string {
       ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'frost')
       : path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'frost'))
   );
+}
+
+// A short hash of the config folder's path, which names the cache records kept for each config folder.
+export function dirTag(): string {
+  return createHash('sha256').update(path.resolve(dir())).digest('hex').slice(0, 8);
 }
 
 export function configPath(): string {
@@ -247,6 +279,14 @@ exclude = ${q(c.exclude)}
 enabled = ${c.schedule.enabled}
 # hourly, 2h, 3h, 4h, 6h, 8h, 12h, daily or weekly.
 every = ${q(c.schedule.every)}
+# The local time backups run, on a 24-hour clock. Shorter intervals count
+# from it, so 6h from "15:00" runs at 03:00, 09:00, 15:00 and 21:00.
+time = ${q(c.schedule.time)}
+# The day weekly backups run, sunday to saturday.
+day = ${q(c.schedule.day)}
+# Run a backup that was missed while your computer was off or asleep as soon
+# as it's back. However many runs it missed, it backs up once.
+catch_up = ${c.schedule.catch_up}
 
 [verify]
 # After a backup that saves a snapshot, and at least once a day otherwise,
@@ -286,8 +326,11 @@ token = ${q(c.storage.permafrost.token)}
 const configKeys = [
   'paths',
   'exclude',
+  'schedule.catch_up',
+  'schedule.day',
   'schedule.enabled',
   'schedule.every',
+  'schedule.time',
   'verify.sample',
   'update.auto',
   'storage.backend',

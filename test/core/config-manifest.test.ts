@@ -17,6 +17,10 @@ import {
   applyEnv,
   writePrivate,
   addPath,
+  timeOfDay,
+  weekday,
+  times,
+  validate,
 } from '../../src/core/config.js';
 import { Manifest, errLocked } from '../../src/core/manifest.js';
 import { emptyStats, type Snapshot } from '../../src/core/snapshot.js';
@@ -68,6 +72,57 @@ test('config full TOML syntax roundtrips and rejects unknown keys and wrong type
   const env = applyEnv(c, { FROST_S3_SECRET_ACCESS_KEY: 'from environment', AWS_SECRET_ACCESS_KEY: 'fallback' });
   assert.equal(env.storage.s3.secret_access_key, 'from environment');
   assert.equal(c.storage.s3.secret_access_key, 'test credential');
+});
+
+// Defaults back up daily at 15:00, weekly runs fall on Sundays and catch-up is on. A config.toml written
+// before these settings existed reads with the defaults.
+test('schedule time, day and catch-up have defaults, parse strictly and report every problem', () => {
+  const c = defaultConfig();
+  assert.deepEqual(c.schedule, { enabled: true, every: 'daily', time: '15:00', day: 'sunday', catch_up: true });
+  assert.deepEqual(parse('[schedule]\nevery = "weekly"').schedule, { ...c.schedule, every: 'weekly' });
+  for (const line of ['time = "15:00"', 'day = "sunday"', 'catch_up = true'])
+    assert.ok(render(c).includes('\n' + line + '\n'), line);
+
+  assert.deepEqual(timeOfDay(' 9:05 '), { hour: 9, minute: 5 });
+  assert.deepEqual(timeOfDay('00:00'), { hour: 0, minute: 0 });
+  assert.deepEqual(timeOfDay('23:59'), { hour: 23, minute: 59 });
+  for (const bad of ['24:00', '12:60', '3pm', '3:00 PM', '15', '15:0', '', '1500'])
+    assert.throws(() => timeOfDay(bad), /schedule.time must be a 24-hour time/);
+  assert.equal(weekday('Wednesday'), 3);
+  assert.equal(weekday(' SUNDAY '), 0);
+  for (const bad of ['sun', 'funday', '']) assert.throws(() => weekday(bad), /schedule.day must be a day of the week/);
+  assert.deepEqual(times({ ...c.schedule, every: '6h', time: '9:30', day: 'friday' }), {
+    every: 6 * 3600e3,
+    hour: 9,
+    minute: 30,
+    day: 5,
+  });
+
+  // Every schedule problem shows at once, and only while automatic backups are on. Each message names its
+  // setting, so `frost config set` can tell which section it belongs to.
+  const broken = parse(
+    'paths = ["x"]\n[schedule]\nevery = "5h"\ntime = "25:00"\nday = "someday"\n[storage]\nbackend = "permafrost"',
+  );
+  assert.throws(
+    () => validate(broken),
+    (error: Error) => {
+      assert.deepEqual(error.message.split('\n'), [
+        'schedule.every must be one of hourly, 2h, 3h, 4h, 6h, 8h, 12h, daily, weekly',
+        'schedule.time must be a 24-hour time, like 15:00 or 09:30',
+        'schedule.day must be a day of the week, like sunday',
+      ]);
+      return true;
+    },
+  );
+  broken.schedule.enabled = false;
+  validate(broken);
+
+  set(c, 'schedule.catch_up', ['false']);
+  set(c, 'schedule.time', ['07:45']);
+  assert.equal(get(c, 'schedule.catch_up'), 'false');
+  assert.equal(get(c, 'schedule.time'), '07:45');
+  assert.throws(() => parse('[schedule]\ncatch_up = "no"'));
+  assert.throws(() => parse('[schedule]\ntime = 15:00:00'));
 });
 
 test('invalid TOML diagnostics omit source lines and credentials', () => {
@@ -329,6 +384,30 @@ test('manifest kernel locks survive reopen and release after an unclosed process
   assert.equal(current.dev, original.dev);
   assert.equal(current.ino, original.ino);
   assert.equal(await readFile(lock, 'utf8'), JSON.stringify({ pid: process.pid, token: 'old-lock-record' }));
+});
+
+// A scheduled backup waits longer than a second for another frost process, and can be cancelled while
+// it waits.
+test('manifest lock waits can be longer than a second and be cancelled', async t => {
+  const folder = await mkdtemp(path.join(os.tmpdir(), 'frost-manifest-wait-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const file = path.join(folder, 'cache.jsonl');
+  const held = await Manifest.open(file);
+
+  const start = Date.now();
+  await assert.rejects(Manifest.open(file, 1300), (error: unknown) => error === errLocked);
+  assert.ok(Date.now() - start >= 1300);
+
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 200);
+  await assert.rejects(Manifest.open(file, 60_000, controller.signal), { name: 'AbortError' });
+
+  // Released partway through a long wait, the lock goes to the waiter.
+  const waiting = Manifest.open(file, 60_000);
+  setTimeout(() => void held.close(), 1500);
+  const next = await waiting;
+  await next.putMeta('after-wait', true);
+  await next.close();
 });
 
 // An attacker renames the manifest's folder and puts a new one in its place. Writes and compaction must

@@ -73,8 +73,9 @@ export class Manifest {
     private lock: { directory: RootDirectory; file: RootFile },
   ) {}
 
-  // Opens or creates the journal at `file`, takes the lock and replays every transaction.
-  static async open(file: string): Promise<Manifest> {
+  // Opens or creates the journal at `file`, takes the lock and replays every transaction. Another
+  // holder of the lock gets `wait` milliseconds to let go before this fails.
+  static async open(file: string, wait = 1000, signal?: AbortSignal): Promise<Manifest> {
     const directory = await openRoot(path.dirname(file), { create: true, mode: 0o700, trustedFinalLink: true });
     let native: RootFile | undefined;
     const release = () => {
@@ -87,17 +88,18 @@ export class Manifest {
     let handle: RootFile | undefined;
     try {
       // The OS lock on `<name>.lock` is held for the manifest's lifetime, and the file's contents
-      // mean nothing. Another holder gets a second to let go before this fails.
+      // mean nothing. It's tried every 25 ms for the first second, then every second.
       native = directory.open(path.basename(file) + '.lock', { read: true, write: true, create: true, mode: 0o600 });
-      const end = Date.now() + 1000;
+      const start = Date.now();
       for (;;) {
         try {
           native.lock(true);
           break;
         } catch (error) {
           if (!['EAGAIN', 'EBUSY', 'EWOULDBLOCK'].includes(code(error) ?? '')) throw error;
-          if (Date.now() >= end) throw errLocked;
-          await delay(25);
+          if (Date.now() - start >= wait) throw errLocked;
+          signal?.throwIfAborted();
+          await delay(Date.now() - start < 1000 ? 25 : 1000, undefined, { signal });
         }
       }
 

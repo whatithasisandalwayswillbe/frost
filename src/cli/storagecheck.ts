@@ -1,5 +1,6 @@
 // Checks a change of storage settings before it's saved, so a wrong setting doesn't quietly start a separate
-// set of backups or lose track of the old ones.
+// set of backups or lose track of the old ones. A change made to config.toml outside frost gets the same
+// checks the first time a command uses it.
 
 import type { Storage } from '../core/config.js';
 import { Repo, errNotInitialized, errWrongKey } from '../core/repo.js';
@@ -15,21 +16,23 @@ async function hasObjects(b: Backend, signal?: AbortSignal): Promise<boolean> {
   return false;
 }
 
-// `config set` stops on a problem. `config edit` passes `warnOnly`, so problems are only warnings.
+// `config set` refuses a change with a problem. `config edit` only warns about one, and so does `notice`, for
+// a change already made outside frost. `notice` stays quiet when the new storage can't be opened, because
+// opening it explains why. Returns false when there was no way to finish the check.
 export async function checkStorageChange(
   ctx: Context,
-  out: Block,
+  out: Pick<Block, 'warn' | 'fmt'>,
   was: Storage,
   now: Storage,
-  warnOnly: boolean,
-): Promise<void> {
+  mode: 'refuse' | 'warn' | 'notice',
+): Promise<boolean> {
   const problem = (s: string) => {
-    if (warnOnly) {
-      out.warn(out.fmt.caution(out.fmt.errorText(s)));
-      return;
-    }
-    throw new Error(s + '\n\nNothing was saved. To change it without this check, use `frost config edit`');
+    if (mode === 'refuse')
+      throw new Error(s + '\n\nNothing was saved. To change it without this check, use `frost config edit`');
+    out.warn(out.fmt.caution(out.fmt.errorText(s)));
+    return true;
   };
+  const unopenable = (s: string) => (mode === 'notice' ? false : problem(s));
 
   // Nothing to check if the location didn't change, or if neither setting describes a usable storage.
   let newB: Backend | undefined;
@@ -46,16 +49,16 @@ export async function checkStorageChange(
   } catch (e) {
     oldError = e;
   }
-  if (newError && oldError) return;
-  if (newError) return problem('with that change, storage settings are incomplete: ' + (newError as Error).message);
-  if (oldB && location(newB!) === location(oldB)) return;
+  if (newError && oldError) return false;
+  if (newError) return unopenable('with that change, storage settings are incomplete: ' + (newError as Error).message);
+  if (oldB && location(newB!) === location(oldB)) return true;
 
   // Without a key on this machine there's no way to open the new repository.
   let key;
   try {
     key = await ctx.loadKey();
   } catch {
-    return;
+    return false;
   }
 
   const signal = AbortSignal.any([...(ctx.signal ? [ctx.signal] : []), AbortSignal.timeout(45_000)]);
@@ -68,6 +71,7 @@ export async function checkStorageChange(
     repo = await Repo.open(newB!, key, signal);
   } catch (e) {
     if (e === errNotInitialized) {
+      if (mode === 'notice') return false;
       if (await hasObjects(newB!, signal))
         return problem(
           where + " has frost backups but no frost.repo. If you moved them, frost.repo didn't come along.",
@@ -82,11 +86,11 @@ export async function checkStorageChange(
       );
     }
     if (e === errWrongKey)
-      return problem(
+      return unopenable(
         where +
           ' has backups made with a different key. To use them, run `frost key import` with their recovery phrase.',
       );
-    return problem("couldn't check " + where + ': ' + explainConnect(e).message);
+    return unopenable("couldn't check " + where + ': ' + explainConnect(e).message);
   }
 
   // A repository with no snapshots, while the old location has the same repository with snapshots, means
@@ -95,7 +99,7 @@ export async function checkStorageChange(
   try {
     ids = await repo.snapshotIDs(signal);
   } catch (err) {
-    return problem("couldn't check " + where + ': ' + explainConnect(err).message);
+    return unopenable("couldn't check " + where + ': ' + explainConnect(err).message);
   }
   if (!ids.length && oldB) {
     let have = false;
@@ -122,4 +126,5 @@ export async function checkStorageChange(
         printable(known.shown ?? '') +
         '. frost will show their snapshots instead. Yours stay where they are.',
     );
+  return true;
 }

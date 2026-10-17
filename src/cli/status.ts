@@ -10,17 +10,20 @@ import { ago, Block, humanBytes, humanCount, inTime, plural, printable, when } f
 import { missingList, readUsage, usageNotice } from './backup.js';
 import { loadKnown, moveHint, StorageError } from './known.js';
 import { updateSummary, updateStatePath } from './update.js';
+import { loadRuns, nextBackup } from './runs.js';
 
-// Returns the next-backup row and how bad it is, where 0 is fine, 1 is a warning and 2 is a failure.
-async function nextRun(ctx: Context, cfg: config.Config, e: Engine): Promise<[string, number]> {
+// Returns the next-backup row and how bad it is, where 0 is fine, 1 is a warning and 2 is a failure. The
+// next backup follows the schedule's calendar, by the same rules scheduled runs use, so a backup by hand
+// doesn't move it.
+async function nextRun(ctx: Context, cfg: config.Config): Promise<[string, number]> {
   if (!cfg.schedule.enabled)
     return [
       ctx.fmt.dim('automatic backups are off (') + 'frost config set schedule.enabled true' + ctx.fmt.dim(')'),
       0,
     ];
-  let every: number;
+  let times;
   try {
-    every = config.interval(cfg.schedule.every);
+    times = config.times(cfg.schedule);
   } catch (err) {
     return [ctx.fmt.error((err as Error).message), 2];
   }
@@ -30,8 +33,10 @@ async function nextRun(ctx: Context, cfg: config.Config, e: Engine): Promise<[st
       1,
     ];
   const how = ctx.fmt.dim('  ' + cfg.schedule.every + ' via ' + (await ctx.hooks.scheduleKind()));
-  const last = e.lastBackup();
-  return [last ? '~' + inTime(Date.parse(last.time) + every) + how : 'soon' + how, 0];
+  const now = ctx.hooks.clock();
+  const next = nextBackup(times, cfg.schedule.catch_up, await loadRuns(), now);
+  if (next === 'soon') return ['soon' + how, 0];
+  return ['~' + (next === 'overdue' ? next : inTime(next.getTime(), now.getTime())) + how, 0];
 }
 
 // The snapshot table, closing the block. It shows the latest 10 unless `all` is set.
@@ -145,7 +150,7 @@ export async function runStatus(ctx: Context, verify: boolean, all: boolean): Pr
       );
     else b.row('last backup', f.good('ok ') + ago(last.time) + f.dim('  ' + shortOf(short, last.snapshot_id ?? '')));
 
-    const [next, level] = await nextRun(ctx, a.cfg, e);
+    const [next, level] = await nextRun(ctx, a.cfg);
     if (level === 2) b.failRow('next backup', next);
     else if (level === 1) b.warnRow('next backup', next);
     else b.row('next backup', next);

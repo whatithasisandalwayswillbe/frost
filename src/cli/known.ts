@@ -1,28 +1,25 @@
 // Remembers where this machine's backups were last opened, so a command that can't find them can say where
 // they went and how to fix it. The record lives in the cache folder and never holds credentials.
 
-import { createHash } from 'node:crypto';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import * as config from '../core/config.js';
 import { location, type Backend } from '../core/storage.js';
 import { frostCommand } from './command.js';
 
-// `where` identifies the storage location, and `shown` is how it's printed.
+// `where` identifies the storage location, and `shown` is how it's printed. `checked` is a location whose
+// settings were already checked as a change from `where`, so using it doesn't check them again.
 interface Known {
   storage?: config.Storage;
   shown?: string;
   where?: string;
   repo_id?: string;
+  checked?: string;
   failed?: { time: string; error: string };
 }
 
 // One record per config folder, named after a hash of its path.
-export const knownPath = () =>
-  path.join(
-    config.cacheDir(),
-    'storage-' + createHash('sha256').update(path.resolve(config.dir())).digest('hex').slice(0, 8) + '.json',
-  );
+export const knownPath = () => path.join(config.cacheDir(), 'storage-' + config.dirTag() + '.json');
 
 // A missing, unparseable or non-object record counts as empty.
 export async function loadKnown(): Promise<Known> {
@@ -49,6 +46,13 @@ export async function rememberStorage(s: config.Storage, b: Backend, id: string)
   const known = { storage: copy, shown: String(b), where: location(b), repo_id: id };
   const old = await loadKnown();
   if (JSON.stringify(old) !== JSON.stringify(known)) await saveKnown(known).catch(() => {});
+}
+
+// Records that a change to the location `where` has been checked.
+export async function rememberChecked(where: string): Promise<void> {
+  const k = await loadKnown();
+  k.checked = where;
+  await saveKnown(k).catch(() => {});
 }
 
 // Records the last failure to open the storage, for `frost status`.

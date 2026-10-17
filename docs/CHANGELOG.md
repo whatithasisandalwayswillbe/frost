@@ -62,6 +62,18 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 - **A missing scheduled job is easy to put back.** If the job disappears, `frost status` says so and `frost config set schedule.enabled true` reinstalls it.
 
+- **You choose when scheduled backups run.** `schedule.time` and `schedule.day` set the time and the day of weekly backups, daily at 15:00 by default. Every scheduler uses them, and shorter intervals count from that time.
+
+- **Missed backups run once your computer is back.** A backup missed while the computer was off or asleep runs when it wakes, starts or you log in, once however many runs it missed. Setting `schedule.catch_up` to `false` skips missed runs instead.
+
+- **Scheduled backups wait their turn.** A scheduled run that finds a backup already done for its time exits quietly, and one that finds another backup running waits for it. When a computer has just woken, it gives the network a few minutes to come back.
+
+- **Editing `config.toml` by hand takes effect.** The next command updates the scheduled job to match a changed schedule and says so, and checks a new storage location the way `frost config edit` does. Scheduled runs follow the file as it is, and on Linux they update their own job.
+
+- **Changing the schedule never stops a running backup.** On macOS and Windows, a change made with `frost config`, `frost init` or a text editor while a scheduled backup runs waits for it, and frost applies the change in the background as soon as the backup finishes.
+
+- **`frost backup` asks first near a scheduled backup.** In a terminal, it says when a scheduled backup starts within the hour or finished within the last hour, and asks whether to back up anyway. If a scheduled backup is running, it says so.
+
 - **frost packages include the runtime.** macOS, Linux and Windows packages contain Node.js, frost's scripts and assets, so users don't need to install Node.js or npm. The runtime stays at a fixed path while updates activate versioned scripts.
 
 - **Windows scheduled backups use the signed bundled runtime.** The Task Scheduler task names frost as its author, says how to remove it, and runs the launcher with the saved config and cache folders.

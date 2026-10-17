@@ -1,6 +1,7 @@
 // Installs the recurring `backup --scheduled` job with launchd on macOS, Task Scheduler on
-// Windows, and a systemd user timer or a crontab line elsewhere. Every scheduler command goes
-// through a runner, so tests never touch a real scheduler or lingering.
+// Windows, and a systemd user timer or a crontab line elsewhere. With catch-up on, each scheduler
+// also starts the job after a run it missed, and the job itself decides whether a backup is due.
+// Every scheduler command goes through a runner, so tests never touch a real scheduler or lingering.
 import { access, readFile, writeFile, unlink, mkdtemp, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -8,10 +9,19 @@ import os from 'node:os';
 import { run, checked, type Runner } from './command.js';
 import { openRoot } from './fs-root.js';
 
-interface Job {
+// When runs start: every `every` milliseconds counted from `hour`:`minute` local time, and for
+// weekly runs on `day`, where 0 is Sunday.
+export interface Times {
+  every: number;
+  hour: number;
+  minute: number;
+  day: number;
+}
+
+interface Job extends Times {
   binary: string;
   script?: string;
-  every: number;
+  catchUp: boolean;
   configDir?: string;
   cacheDir?: string;
   logFile?: string;
@@ -58,22 +68,76 @@ export function windowsQuote(s: string): string {
   );
 }
 
+const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const pad = (n: number) => String(n).padStart(2, '0');
+
 // Intervals round down to whole hours. A week or more runs weekly, a day or more daily, and an
 // hour or less hourly. Anything between runs every N hours.
-function humanEvery(every: number): string {
-  const h = Math.trunc(every / hour);
-  return h >= 168 ? 'weekly' : h >= 24 ? 'daily' : h <= 1 ? 'hourly' : `every ${h} hours`;
+const hoursOf = (t: Times) => Math.trunc(t.every / hour);
+
+// The hours of the day that runs under a day apart start in: the configured hour, and every
+// interval before and after it. frost's intervals all divide a day evenly.
+export function runHours(t: Times): number[] {
+  const h = Math.max(1, hoursOf(t));
+  const hours: number[] = [];
+  for (let at = t.hour % h; at < 24; at += h) hours.push(at);
+  return hours;
 }
 
-export function onCalendar(every: number): string {
-  const h = Math.trunc(every / hour);
-  return h >= 168 ? 'weekly' : h >= 24 ? 'daily' : h <= 1 ? 'hourly' : `*-*-* 00/${h}:00:00`;
+// The run times on one local day, earliest first.
+function runsOn(t: Times, y: number, m: number, d: number): Date[] {
+  const h = hoursOf(t);
+  if (h >= 168) return new Date(y, m, d).getDay() === t.day ? [new Date(y, m, d, t.hour, t.minute)] : [];
+  if (h >= 24) return [new Date(y, m, d, t.hour, t.minute)];
+  return runHours(t).map(at => new Date(y, m, d, at, t.minute));
 }
 
-// Cron jobs run at minute 17, and daily and weekly ones at 03:17. Weekly means Sunday.
-export function cronSpec(every: number): string {
-  const h = Math.trunc(every / hour);
-  return h >= 168 ? '17 3 * * 0' : h >= 24 ? '17 3 * * *' : h <= 1 ? '17 * * * *' : `17 */${h} * * *`;
+// The latest run time at or before `at`, or the earliest one after it, on the local clock. Every
+// schedule runs at least weekly, so eight days always hold one.
+function findRun(t: Times, at: Date, after: boolean): Date {
+  for (let i = 0; i <= 8; i++) {
+    const day = new Date(at.getFullYear(), at.getMonth(), at.getDate() + (after ? i : -i));
+    const runs = runsOn(t, day.getFullYear(), day.getMonth(), day.getDate());
+    const found = after ? runs.find(r => r > at) : runs.filter(r => r <= at).at(-1);
+    if (found) return found;
+  }
+  throw new Error('schedule has no run time');
+}
+
+export const runBefore = (t: Times, at: Date): Date => findRun(t, at, false);
+export const runAfter = (t: Times, at: Date): Date => findRun(t, at, true);
+
+function humanEvery(t: Times): string {
+  const h = hoursOf(t);
+  const at = pad(t.hour) + ':' + pad(t.minute);
+  if (h >= 168) return `weekly on ${weekdays[t.day]} at ${at}`;
+  if (h >= 24) return `daily at ${at}`;
+  return h <= 1 ? `hourly at :${pad(t.minute)}` : `every ${h} hours from ${at}`;
+}
+
+export function onCalendar(t: Times): string {
+  const h = hoursOf(t);
+  const at = (hours: string) => `*-*-* ${hours}:${pad(t.minute)}:00`;
+  if (h >= 168) return weekdays[t.day].slice(0, 3) + ' ' + at(pad(t.hour));
+  if (h >= 24) return at(pad(t.hour));
+  return at(h <= 1 ? '*' : runHours(t).map(pad).join(','));
+}
+
+// Cron has no way to catch up a missed run. With catch-up on, it starts frost every 15 minutes from
+// the configured minute instead, and frost decides whether a backup is due or was missed. Weekly
+// days count from 0 for Sunday.
+export function cronSpec(t: Times, catchUp = false): string {
+  const h = hoursOf(t);
+  if (catchUp)
+    return (
+      [0, 15, 30, 45]
+        .map(q => (t.minute + q) % 60)
+        .sort((a, b) => a - b)
+        .join(',') + ' * * * *'
+    );
+  if (h >= 168) return `${t.minute} ${t.hour} * * ${t.day}`;
+  if (h >= 24) return `${t.minute} ${t.hour} * * *`;
+  return `${t.minute} ${h <= 1 ? '*' : runHours(t).join(',')} * * *`;
 }
 
 // Only the Windows task passes --log-file. launchd and cron send output to the log themselves,
@@ -92,18 +156,18 @@ function argumentValue(j: Job, args: string[], i: number): boolean {
   return Boolean(j.script && i === 0) || ['--config-dir', '--cache-dir', '--log-file'].includes(args[i - 1] ?? '');
 }
 
-// launchd runs at the same times as cron: minute 17, and daily and weekly jobs at 03:17. Unlike
-// StartInterval, which skips a run due while the Mac sleeps, StartCalendarInterval runs it on wake.
-function launchdCalendar(every: number): string {
-  const h = Math.trunc(every / hour);
+// One calendar entry per run time. Unlike StartInterval, which skips a run due while the Mac sleeps,
+// StartCalendarInterval runs it on wake, once however many it missed.
+function launchdCalendar(t: Times): string {
+  const h = hoursOf(t);
   const times: Record<string, number>[] =
     h >= 168
-      ? [{ Weekday: 0, Hour: 3, Minute: 17 }]
+      ? [{ Weekday: t.day, Hour: t.hour, Minute: t.minute }]
       : h >= 24
-        ? [{ Hour: 3, Minute: 17 }]
+        ? [{ Hour: t.hour, Minute: t.minute }]
         : h <= 1
-          ? [{ Minute: 17 }]
-          : Array.from({ length: Math.floor(23 / h) + 1 }, (_, i) => ({ Hour: i * h, Minute: 17 }));
+          ? [{ Minute: t.minute }]
+          : runHours(t).map(at => ({ Hour: at, Minute: t.minute }));
   const entry = (fields: Record<string, number>) =>
     '\t\t<dict>\n' +
     Object.entries(fields)
@@ -114,14 +178,16 @@ function launchdCalendar(every: number): string {
 }
 
 // A launchd agent that runs on the calendar above as a background process with low-priority I/O,
-// sending stdout and stderr to the log file.
+// sending stdout and stderr to the log file. With catch-up on, RunAtLoad also starts it at login,
+// which catches a run missed while the Mac was off.
 export function launchdPlist(j: Job): string {
   const args = [j.binary, ...argumentsFor(j)].map(s => `\t\t<string>${xmlEscape(s)}</string>`).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>Label</key>\n\t<string>${launchdLabel}</string>\n\t<key>ProgramArguments</key>\n\t<array>\n${args}\n\t</array>\n${launchdCalendar(j.every)}\n\t<key>ProcessType</key>\n\t<string>Background</string>\n\t<key>LowPriorityIO</key>\n\t<true/>\n\t<key>StandardOutPath</key>\n\t<string>${xmlEscape(j.logFile ?? '')}</string>\n\t<key>StandardErrorPath</key>\n\t<string>${xmlEscape(j.logFile ?? '')}</string>\n</dict>\n</plist>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>Label</key>\n\t<string>${launchdLabel}</string>\n\t<key>ProgramArguments</key>\n\t<array>\n${args}\n\t</array>\n${launchdCalendar(j)}\n${j.catchUp ? '\t<key>RunAtLoad</key>\n\t<true/>\n' : ''}\t<key>ProcessType</key>\n\t<string>Background</string>\n\t<key>LowPriorityIO</key>\n\t<true/>\n\t<key>StandardOutPath</key>\n\t<string>${xmlEscape(j.logFile ?? '')}</string>\n\t<key>StandardErrorPath</key>\n\t<string>${xmlEscape(j.logFile ?? '')}</string>\n</dict>\n</plist>\n`;
 }
 
-// A oneshot service at low CPU and idle I/O priority, and a timer for it. Persistent catches up
-// a run missed while the machine was off, and RandomizedDelaySec spreads starts over 5 minutes.
+// A oneshot service at low CPU and idle I/O priority, and a timer for it. A run due while the machine
+// sleeps starts on wake. With catch-up on, Persistent also starts a run missed while the machine was
+// off. RandomizedDelaySec spreads starts over 5 minutes.
 export function systemdUnits(j: Job): { service: string; timer: string } {
   // Paths are double-quoted with C-style escapes, and % is doubled so systemd doesn't expand specifiers.
   // systemd substitutes $ variables in arguments but not in the executable path, so only arguments
@@ -132,7 +198,7 @@ export function systemdUnits(j: Job): { service: string; timer: string } {
   const raw = argumentsFor(j);
   const args = raw.map((s, i) => (argumentValue(j, raw, i) ? argument(s) : s));
   const service = `[Unit]\nDescription=frost backup\n\n[Service]\nType=oneshot\nExecStart=${quote(j.binary)} ${args.join(' ')}\nNice=10\nIOSchedulingClass=idle\n`;
-  const timer = `[Unit]\nDescription=Run frost backup ${humanEvery(j.every)}\n\n[Timer]\nOnCalendar=${onCalendar(j.every)}\nPersistent=true\nRandomizedDelaySec=300\n\n[Install]\nWantedBy=timers.target\n`;
+  const timer = `[Unit]\nDescription=Run frost backup ${humanEvery(j)}\n\n[Timer]\nOnCalendar=${onCalendar(j)}\nPersistent=${j.catchUp}\nRandomizedDelaySec=300\n\n[Install]\nWantedBy=timers.target\n`;
   return { service, timer };
 }
 
@@ -143,7 +209,7 @@ export function cronLine(j: Job): string {
   const raw = argumentsFor(j);
   const args = raw.map((s, i) => (argumentValue(j, raw, i) ? quote(s) : s));
   const command = `${quote(j.binary)} ${args.join(' ')} >> ${quote(j.logFile ?? '')} 2>&1`;
-  return `${cronSpec(j.every)} ${command} ${cronMarker}`;
+  return `${cronSpec(j, j.catchUp)} ${command} ${cronMarker}`;
 }
 
 // A comment mentioning the marker belongs to the user, even when the marker is its last text.
@@ -170,24 +236,28 @@ export function taskCommand(j: Job): { command: string; args: string } {
 
 // Local time with no zone, so the trigger follows the machine's clock.
 function localDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
 }
 
-// Task Scheduler 1.2 XML. Under a day, a TimeTrigger repeats every N hours from now. Daily and
-// weekly jobs use a CalendarTrigger at 03:17 local time, weekly on Sundays.
+// Task Scheduler 1.2 XML. A CalendarTrigger starts at the next run time and repeats daily, or weekly on
+// the configured day. Under a day, each day's start also repeats every N hours for that day, so runs
+// keep the same clock times after a daylight saving change.
 export function taskXML(j: Job, now = new Date()): string {
   const { command, args } = taskCommand(j);
-  const h = Math.trunc(j.every / hour);
-  const start = h < 24 ? localDate(now) : localDate(now).slice(0, 10) + 'T03:17:00';
-  const trigger =
+  const h = hoursOf(j);
+  const repeat =
     h < 24
-      ? `    <TimeTrigger>\n      <StartBoundary>${start}</StartBoundary>\n      <Repetition>\n        <Interval>PT${Math.max(1, h)}H</Interval>\n      </Repetition>\n    </TimeTrigger>`
-      : `    <CalendarTrigger>\n      <StartBoundary>${start}</StartBoundary>\n${h >= 168 ? '      <ScheduleByWeek>\n        <WeeksInterval>1</WeeksInterval>\n        <DaysOfWeek>\n          <Sunday/>\n        </DaysOfWeek>\n      </ScheduleByWeek>' : '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>'}\n    </CalendarTrigger>`;
+      ? `      <Repetition>\n        <Interval>PT${Math.max(1, h)}H</Interval>\n        <Duration>P1D</Duration>\n      </Repetition>\n`
+      : '';
+  const days =
+    h >= 168
+      ? `      <ScheduleByWeek>\n        <WeeksInterval>1</WeeksInterval>\n        <DaysOfWeek>\n          <${weekdays[j.day]}/>\n        </DaysOfWeek>\n      </ScheduleByWeek>`
+      : '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>';
+  const trigger = `    <CalendarTrigger>\n      <StartBoundary>${localDate(runAfter(j, now))}</StartBoundary>\n${repeat}${days}\n    </CalendarTrigger>`;
 
-  // The task runs as the logged-in user with least privilege. It skips a run while one is going,
-  // doesn't run on battery and doesn't catch up runs it missed.
-  return `<?xml version="1.0" encoding="UTF-16"?>\n<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">\n  <RegistrationInfo>\n    <Author>frost</Author>\n    <Description>Runs frost backup ${humanEvery(j.every)}. frost created this task. To remove it, run frost config set schedule.enabled false.</Description>\n    <URI>\\${taskName}</URI>\n  </RegistrationInfo>\n  <Triggers>\n${trigger}\n  </Triggers>\n  <Principals>\n    <Principal id="Author">\n      <LogonType>InteractiveToken</LogonType>\n      <RunLevel>LeastPrivilege</RunLevel>\n    </Principal>\n  </Principals>\n  <Settings>\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n    <DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>\n    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>\n    <StartWhenAvailable>false</StartWhenAvailable>\n  </Settings>\n  <Actions Context="Author">\n    <Exec>\n      <Command>${xmlEscape(command)}</Command>\n      <Arguments>${xmlEscape(args)}</Arguments>\n    </Exec>\n  </Actions>\n</Task>\n`;
+  // The task runs as the logged-in user with least privilege. It skips a run while one is going and
+  // doesn't run on battery. With catch-up on, it starts a run it missed as soon as it can.
+  return `<?xml version="1.0" encoding="UTF-16"?>\n<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">\n  <RegistrationInfo>\n    <Author>frost</Author>\n    <Description>Runs frost backup ${humanEvery(j)}. frost created this task. To remove it, run frost config set schedule.enabled false.</Description>\n    <URI>\\${taskName}</URI>\n  </RegistrationInfo>\n  <Triggers>\n${trigger}\n  </Triggers>\n  <Principals>\n    <Principal id="Author">\n      <LogonType>InteractiveToken</LogonType>\n      <RunLevel>LeastPrivilege</RunLevel>\n    </Principal>\n  </Principals>\n  <Settings>\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n    <DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>\n    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>\n    <StartWhenAvailable>${j.catchUp}</StartWhenAvailable>\n  </Settings>\n  <Actions Context="Author">\n    <Exec>\n      <Command>${xmlEscape(command)}</Command>\n      <Arguments>${xmlEscape(args)}</Arguments>\n    </Exec>\n  </Actions>\n</Task>\n`;
 }
 
 // UTF-16LE with a byte order mark, matching the XML declaration.
@@ -331,6 +401,13 @@ export class Scheduler {
       if (/[\r\n\x00]/.test(value)) throw new Error("scheduler paths can't contain line breaks or NUL");
     }
     if (!Number.isFinite(j.every) || j.every < hour) throw new Error('schedule interval must be at least an hour');
+    const ranges: [number, number][] = [
+      [j.hour, 23],
+      [j.minute, 59],
+      [j.day, 6],
+    ];
+    if (ranges.some(([value, max]) => !Number.isInteger(value) || value < 0 || value > max))
+      throw new Error('schedule time must be a valid hour, minute and weekday');
 
     switch (await this.kind()) {
       case 'launchd': {

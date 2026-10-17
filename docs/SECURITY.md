@@ -113,8 +113,9 @@ Set `update.auto` to `false` to review each release before installing it. frost 
 | `key` | Your recovery phrase, in plain text | `0600` on POSIX |
 | `config.toml` | Settings and storage credentials | `0600` on POSIX |
 | `manifest-*.jsonl` | Chunk IDs, file paths, sizes and modification times | `0600` on POSIX |
-| `storage-*.json` | Last storage settings without credentials, and repository ID | `0600` on POSIX |
+| `storage-*.json` | Last storage settings without credentials, repository ID, and the last storage location checked | `0600` on POSIX |
 | `update.json` | Latest update check, release and error | `0600` on POSIX |
+| `schedule-*.json` | The scheduled job's schedule and install time, a change waiting to be applied and the ID of the process that will apply it, and when the last full backup started and ended, with its process ID | `0600` on POSIX |
 | `frost.log` | Scheduled output, including unreadable paths | `0600` when frost creates it; scheduler redirection follows the scheduler's permissions |
 
 [CLI.md](CLI.md#files) lists locations and logging behavior. The manifest holds file paths in plain text and never leaves the machine. Windows files inherit user-profile permissions rather than Unix modes. Existing permissions aren't a substitute for protecting your account, and custom shared folders can weaken that boundary.

@@ -1,5 +1,6 @@
 // `frost config` lists the settings, reads or changes one, or opens config.toml in an editor. A change to
-// the schedule reinstalls the scheduled job, and a change of storage is checked before it's saved.
+// the schedule reinstalls the scheduled job, and a change of storage is checked before it's saved. Changes
+// made to config.toml outside frost are applied before these commands run, by sync.ts.
 
 import { readFile, mkdtemp, mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -7,6 +8,9 @@ import * as config from '../core/config.js';
 import { Context } from './context.js';
 import { Block, printable, tildify } from './format.js';
 import { checkStorageChange } from './storagecheck.js';
+import { rememberChecked } from './known.js';
+import { jobNote, syncJob } from './sync.js';
+import { location } from '../core/storage.js';
 
 interface SettingChange {
   key: string;
@@ -53,14 +57,21 @@ function printChanges(b: Block, changes: SettingChange[]): void {
 // Reinstalls or removes the scheduled job if the schedule changed. Returns a note for the closing line.
 async function resync(ctx: Context, before: config.Config['schedule'], cfg: config.Config): Promise<string> {
   if (JSON.stringify(before) === JSON.stringify(cfg.schedule)) return '';
+  let applied: boolean;
   try {
-    await ctx.hooks.syncSchedule(cfg);
+    applied = await syncJob(ctx, cfg);
   } catch (err) {
     throw new Error('saved, but updating the scheduled job failed: ' + (err as Error).message);
   }
-  return ctx.fmt.dim(
-    cfg.schedule.enabled ? ' Scheduled job updated: ' + cfg.schedule.every + '.' : ' Scheduled job removed.',
-  );
+  return ctx.fmt.dim(' ' + jobNote(cfg, applied));
+}
+
+// A storage change that went through its check before saving isn't checked again when it's first used.
+async function storageChecked(ctx: Context, was: config.Storage, now: config.Storage): Promise<void> {
+  try {
+    const where = location(ctx.hooks.backend(now));
+    if (where !== location(ctx.hooks.backend(was))) await rememberChecked(where);
+  } catch {}
 }
 
 // The editor named on the command line wins, then $VISUAL, then $EDITOR. Without one it's Notepad on
@@ -193,11 +204,12 @@ async function configEdit(ctx: Context, named: string): Promise<void> {
     } catch (err) {
       p.warn(ctx.fmt.caution(ctx.fmt.errorText(err)));
     }
-    await checkStorageChange(ctx, p, was.storage, now!.storage, true);
+    await checkStorageChange(ctx, p, was.storage, now!.storage, 'warn');
 
     p.gap();
     if (!(await p.confirm('yes', 'save'))) throw new Error('cancelled, nothing was saved');
     await config.writePrivate(file, edited!);
+    await storageChecked(ctx, was.storage, now!.storage);
     const done = await resync(ctx, was.schedule, now!);
     p.gap();
     p.close(ctx.fmt.good('Saved.') + done);
@@ -259,14 +271,17 @@ export async function runConfig(ctx: Context, args: string[], showSecrets: boole
   if (!changes.length) {
     // Setting a schedule value again reinstalls the scheduled job if it has gone missing.
     if (args[1].startsWith('schedule.') && cfg.schedule.enabled && !(await ctx.hooks.scheduleInstalled())) {
+      let applied: boolean;
       try {
-        await ctx.hooks.syncSchedule(cfg);
+        applied = await syncJob(ctx, cfg);
       } catch (err) {
         throw new Error('the scheduled job is missing, and reinstalling it failed: ' + (err as Error).message);
       }
       b.close(
-        ctx.fmt.good('Scheduled job reinstalled.') +
-          ctx.fmt.dim(' ' + args[1] + ' was already set to that, but the job was missing.'),
+        applied
+          ? ctx.fmt.good('Scheduled job reinstalled.') +
+              ctx.fmt.dim(' ' + args[1] + ' was already set to that, but the job was missing.')
+          : 'The scheduled job is reinstalled once the running backup finishes.',
       );
       return;
     }
@@ -275,8 +290,9 @@ export async function runConfig(ctx: Context, args: string[], showSecrets: boole
   }
 
   printChanges(b, changes);
-  if (args[1].startsWith('storage.')) await checkStorageChange(ctx, b, was.storage, cfg.storage, false);
+  if (args[1].startsWith('storage.')) await checkStorageChange(ctx, b, was.storage, cfg.storage, 'refuse');
   await config.save(cfg);
+  await storageChecked(ctx, was.storage, cfg.storage);
   const done = await resync(ctx, was.schedule, cfg);
   b.gap();
   b.close(ctx.fmt.good('Saved.') + done);

@@ -123,6 +123,10 @@ After a backup that saves a snapshot, frost downloads `verify.sample` random chu
 
 With Permafrost, `backup` ends with a `storage` warning when the server has something to say about the account, such as storage that's nearly full.
 
+In a terminal, `backup` asks before it starts when a scheduled backup starts within the next hour, or finished within the last hour. For schedules under 4 hours apart, the window is a quarter of the interval. Enter goes ahead and `n` cancels. A finished scheduled backup only counts when it worked and no backup has run by hand since. There's no question for a dry run, with `--path` or `--exclude`, or when input doesn't come from a terminal.
+
+Only one backup or restore uses your backups at a time. If another is running, `backup` stops and says so, and names a scheduled backup when that's what's running.
+
 ### What's backed up
 
 frost backs up regular files, folders and symlinks, with their permissions and modification times. A symlink is stored as the link itself, and hard-linked files are backed up and restored as separate files. frost skips sockets, devices, pipes and the `.frost-partial-...` files a stopped restore leaves behind, and it doesn't keep owners, ACLs or extended attributes.
@@ -267,7 +271,20 @@ With `update.auto` set to `false`, the check still runs and `frost status` says 
 | `frost config set <key> <value...>` | Change one setting and show what changed. Lists take one value per item |
 | `frost config edit [editor]` | Open a copy of `config.toml` in the editor you name, `$VISUAL` or `$EDITOR`, or nano, vim or vi (Notepad on Windows). When you close it, frost lists what changed and saves the copy once you type `yes`. A file that doesn't parse goes back to the editor |
 
-Changing `schedule.enabled` or `schedule.every`, with `set` or `edit`, updates the OS scheduled job straight away.
+Changing a `schedule` setting with `set` or `edit` updates the OS scheduled job straight away.
+
+On macOS and Windows, replacing the job while a scheduled backup is running would stop that backup, so the change waits. `set`, `edit` and `frost init` save it, say the job updates once the running backup finishes, and start a background frost process that applies it as soon as the backup is done, however long that takes. Later changes share the same process, which checks every 15 seconds and prints nothing. If `config.toml` is gone by then because frost was uninstalled, it removes the job. A systemd timer or crontab line can be replaced during a backup, so on Linux nothing waits.
+
+### Editing `config.toml` directly
+
+You can also change `config.toml` in any editor. Every command reads its settings from the file when it runs, so most changes take effect on the next run. Two settings need more than that, and frost handles them the next time any command except `init` and `config get` runs:
+
+| You change | What frost does |
+|---|---|
+| A `schedule` setting | Updates or removes the scheduled job to match, and prints `config.toml changed. Scheduled job updated: daily.` or `Scheduled job removed.`. If the new value is wrong or the scheduler refuses, it says so on every command until it's fixed. A change made while a scheduled backup runs waits for it, as `set` does |
+| Where backups go | Runs the checks `frost config edit` would, the first time a command uses the new location, and prints any problem as a warning. A location that doesn't open fails with the usual explanation |
+
+On Linux, a scheduled run updates its job too. A launchd or Task Scheduler job can't replace itself while it runs, so it waits for the next command. Until then, scheduled runs already follow the new settings: they decide whether a backup is due from `config.toml`, and do nothing while `schedule.enabled` is `false`.
 
 ### Settings
 
@@ -277,6 +294,9 @@ Changing `schedule.enabled` or `schedule.every`, with `set` or `edit`, updates t
 | `exclude` | `.DS_Store`, `Thumbs.db`, `*.tmp`, `*.swp`, `node_modules`, `.cache` | A bare name or pattern matches anywhere. A pattern with a `/` is a full path (`~` works) and matches that path and everything under it |
 | `schedule.enabled` | `true` | Run backups automatically |
 | `schedule.every` | `daily` | `hourly`, `2h`, `3h`, `4h`, `6h`, `8h`, `12h`, `daily` or `weekly` |
+| `schedule.time` | `15:00` | The local time backups run, as `HH:MM` on a 24-hour clock. Shorter intervals count from it, so `6h` from `15:00` runs at 03:00, 09:00, 15:00 and 21:00 |
+| `schedule.day` | `sunday` | The day weekly backups run, `sunday` to `saturday` |
+| `schedule.catch_up` | `true` | Run a backup missed while the computer was off or asleep once it's back. See [Missed runs](#missed-runs) |
 | `verify.sample` | `20` | Chunks downloaded and checked after a backup that saves a snapshot, and at least once a day otherwise. `0` turns the check off |
 | `update.auto` | `true` | Install new releases after scheduled backups. `false` only tells you about them |
 | `storage.backend` | | `s3` or `permafrost` |
@@ -298,7 +318,7 @@ Changing `schedule.enabled` or `schedule.every`, with `set` or `edit`, updates t
 | Start a separate set of backups somewhere else | Run `frost init` and point it at the empty location. The old backups stay where they are, but frost only shows the new ones |
 | Go back to backups you moved away from | Set the old location again |
 
-Moving only `frost.repo` doesn't move your backups. `frost config set` checks a new location before saving it, and refuses one with no frost repository or a different key. It also refuses a copy with no snapshots when the old location still has snapshots for the same repository. `frost config edit` shows them as warnings before you save, so it can still make a change `set` refuses. If frost can't find your backups, the error and `frost status` say where they were last opened and how to get back to them.
+Moving only `frost.repo` doesn't move your backups. `frost config set` checks a new location before saving it, and refuses one with no frost repository or a different key. It also refuses a copy with no snapshots when the old location still has snapshots for the same repository. `frost config edit` shows them as warnings before you save, so it can still make a change `set` refuses. A location changed in `config.toml` directly gets the same warnings the first time it's used, as [Editing `config.toml` directly](#editing-configtoml-directly) describes. If frost can't find your backups, the error and `frost status` say where they were last opened and how to get back to them.
 
 ### Environment variables
 
@@ -329,6 +349,7 @@ Values from the environment are never written to `config.toml`.
 | Manifest (a cache) | `~/.cache/frost/manifest-<repo>.jsonl` | `%LocalAppData%\frost\manifest-<repo>.jsonl` |
 | Where backups last opened, one per config folder | `~/.cache/frost/storage-<config>.json` | `%LocalAppData%\frost\storage-<config>.json` |
 | Update check | `~/.cache/frost/update.json` | `%LocalAppData%\frost\update.json` |
+| The scheduled job's schedule and install time, and when the last full backup ran, one per config folder | `~/.cache/frost/schedule-<config>.json` | `%LocalAppData%\frost\schedule-<config>.json` |
 | Scheduled run log, with launchd, cron and Task Scheduler | `~/.cache/frost/frost.log` | `%LocalAppData%\frost\frost.log` |
 
 On macOS and Linux, frost respects `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`. With systemd, scheduled runs log to the journal instead (`journalctl --user -u frost-backup`). On Windows, frost appends backup output, failures and update results to the log itself, including with tasks installed by an older version. Logs larger than 1 MiB are emptied before the next run.
@@ -344,7 +365,7 @@ The manifest is disposable. Removing it rebuilds the cache from storage and rere
 | Linux without systemd | cron | A line in your crontab tagged `# frost-backup` |
 | Windows | Task Scheduler | A task named `frost backup` |
 
-The job invokes the bundled runtime and launcher to run `frost backup --scheduled`, which logs plain lines instead of a progress bar and then checks for [updates](#automatic-updates). launchd and the systemd timer catch up, so a laptop that was closed runs the missed backup when it wakes. Cron and Task Scheduler skip runs the machine was off or asleep for. launchd, cron and Task Scheduler run daily backups at 03:17 and weekly ones on Sundays at 03:17. The Windows task runs only while you're signed in, doesn't start on battery and stops if the computer is unplugged.
+The job invokes the bundled runtime and launcher to run `frost backup --scheduled`, which logs plain lines instead of a progress bar and then checks for [updates](#automatic-updates). Every scheduler starts backups at `schedule.time` in local time: daily, weekly on `schedule.day`, or for shorter intervals at that time and every interval before and after it. systemd starts each run up to 5 minutes late, at random. The Windows task runs only while you're signed in, doesn't start on battery and stops if the computer is unplugged.
 
 macOS lists the job under System Settings > General > Login Items & Extensions as Node.js Foundation, the publisher of the bundled runtime. Switching it off there stops scheduled backups, and `frost status` says the job is missing. frost loads the job again whenever it reinstalls it, after a schedule change for example, even though the switch still shows off. To stop scheduled backups, run `frost config set schedule.enabled false`.
 
@@ -353,6 +374,21 @@ With systemd, frost tries to turn on lingering for your user (`loginctl enable-l
 Jobs keep the config and cache directories used when they're installed, including environment overrides. Run `frost init` again after changing those directories, or to update an older job that didn't keep them.
 
 If the job goes missing, `frost status` says so, and `frost config set schedule.enabled true` puts it back.
+
+### Missed runs
+
+With `schedule.catch_up` on, a backup missed while the computer was off or asleep runs once it's back. However many runs it missed, it backs up once.
+
+| Scheduler | Starts a missed backup |
+|---|---|
+| launchd | When the Mac wakes, or at login after it was off |
+| systemd | When the machine wakes, or when the timer starts again after it was off: at boot with lingering, otherwise at login |
+| Task Scheduler | As soon as it can once the computer is back and you're signed in |
+| cron | Within 15 minutes. With catch-up on, cron starts frost every 15 minutes and frost decides |
+
+Every scheduled run checks `schedule-<config>.json` in the cache folder first. It exits without a log line or update check when a full backup has already started for the latest run time, whether scheduled or by hand, or when the job was installed after that time. A run that starts more than 10 minutes late is catching up, and with `schedule.catch_up` off frost skips it. That includes the runs launchd and systemd always start on wake. If frost can't read its settings or that file, it backs up.
+
+A scheduled run that can't reach storage, often because the computer has only just woken, tries again for about 5 minutes. If another backup or a restore is using your backups, it waits up to an hour for it to finish.
 
 ## Exit codes
 

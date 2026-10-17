@@ -76,6 +76,13 @@ test(
       syncSchedule: async () => {},
       scheduleKind: async () => 'test scheduler',
       scheduleInstalled: async () => true,
+      // Every scheduled run is due. The decision has its own tests.
+      scheduledDue: async () => true,
+      // A fixed clock keeps the next-backup row from depending on when the test runs.
+      clock: () => new Date(2026, 9, 17, 12, 0),
+      // No background process ever starts in tests.
+      syncLater: () => undefined,
+      bootTime: () => 0,
       newKey: () => key,
       pickWords: () => [2, 17],
       openBrowser: async () => {
