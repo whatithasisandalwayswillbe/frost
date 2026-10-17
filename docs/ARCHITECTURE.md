@@ -46,6 +46,10 @@ A changed file is checked through its open handle and its directory entry after 
 
 A dry run walks, chunks and compares without uploading or saving a snapshot. It still refreshes the local chunk list when a sync is due.
 
+Compression uses zstd level 1 with up to 8 MiB of history within each object. Fast match finding is the default. Code delimiters and repetition checks in bounded samples, plus small ZIP, gzip and Flate PDF headers, select double-fast match finding with shorter matches, using one full compression pass. Repeated code templates keep the fast match finder. Other objects up to 64 KiB can try both match finders and keep the smaller result; already compact and incompressible outputs skip that retry. Objects up to nine bytes are stored directly. All file bytes are preserved, including PDF offsets, source whitespace, metadata and existing compression. Output uses the same raw or zstd format that earlier versions read, and compression is only kept when it saves space.
+
+Decompression sizes its output buffers from the frame header, capped at 8 MiB plus 16 KiB, to avoid collecting small blocks. Frames without a recorded size use 16 KiB buffers. The decoded output limit also covers concatenated frames.
+
 ### Unchanged backups
 
 The manifest records a saved snapshot's ID, paths, SHA-256 file-list digest and two 64-bit hashes per entry. A backup saves no snapshot only when:

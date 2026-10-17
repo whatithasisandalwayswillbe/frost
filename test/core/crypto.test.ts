@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { markAsUntransferable } from 'node:worker_threads';
-import { createDecipheriv, hkdfSync } from 'node:crypto';
+import { createCipheriv, createDecipheriv, hkdfSync } from 'node:crypto';
 import { constants, zstdCompressSync } from 'node:zlib';
 import { Key, errDecrypt, hChaCha20, parseID } from '../../src/core/crypto.js';
 import { encode, decode, words } from '../../src/core/bip39.js';
@@ -23,10 +23,26 @@ import {
   type Table,
 } from '../../src/core/chunker.js';
 import { random } from '../support.js';
+import { compressionData } from './compression-data.js';
 
 const fixture = JSON.parse(
   readFileSync(new URL('../../../test/fixtures/core/repository.json', import.meta.url), 'utf8'),
 );
+
+// Authenticates an explicit body under the test's all-zero master key.
+function sealBody(body: Buffer, ad: string): Buffer {
+  const enc = Buffer.from(hkdfSync('sha256', Buffer.alloc(32), Buffer.alloc(0), 'frost v1 encryption', 32));
+  const nonce = Buffer.alloc(24);
+  const subkey = hChaCha20(enc, nonce.subarray(0, 16));
+  try {
+    const cipher = createCipheriv('chacha20-poly1305', subkey, Buffer.alloc(12), { authTagLength: 16 });
+    cipher.setAAD(Buffer.from(ad), { plaintextLength: body.length });
+    return Buffer.concat([Buffer.from([1]), nonce, cipher.update(body), cipher.final(), cipher.getAuthTag()]);
+  } finally {
+    enc.fill(0);
+    subkey.fill(0);
+  }
+}
 
 // The plain one-byte-at-a-time FastCDC loop. The chunker's uniform, WebAssembly and scalar paths
 // must all agree with it. The 64-bit gear hash is kept as two 32-bit halves, and the stricter mask
@@ -124,6 +140,80 @@ test('sealing opens existing raw and zstd reference objects', () => {
       () => key.open(blob.subarray(0, 5), 'test/object'),
       error => error === errDecrypt,
     );
+  }
+});
+
+test('compression preserves complete files and reduces distant text, image and binary repeats', async () => {
+  const key = Key.fromMaster(Buffer.alloc(32));
+  try {
+    for (const [name, input] of compressionData()) {
+      const original = Buffer.from(input);
+      const id = key.chunkID(input);
+      const ad = `test/compression/${name}`;
+      const legacy = zstdCompressSync(input, { params: { [constants.ZSTD_c_compressionLevel]: 1 } });
+      const previous = zstdCompressSync(input, {
+        params: { [constants.ZSTD_c_compressionLevel]: 1, [constants.ZSTD_c_windowLog]: 23 },
+      });
+      const blob = key.seal(input, ad);
+      assert.ok(blob.length <= input.length + 42, name);
+      assert.deepEqual(key.open(blob, ad), original, name);
+      assert.deepEqual(await key.openChunk(blob, id, ad), original, name);
+      const workerBlob = await key.sealChunk(input, id, ad);
+      assert.equal(workerBlob.length, blob.length, name);
+      assert.deepEqual(key.open(workerBlob, ad), original, name);
+      assert.deepEqual(input, original, name);
+      assert.equal(key.chunkID(input), id, name);
+
+      if (name === 'bmp' || name === 'distant-binary' || name === 'distant-max')
+        assert.ok(blob.length - 42 < legacy.length * 0.8, name);
+      if (name === 'distant-text') assert.ok(blob.length - 42 < legacy.length, name);
+      if (name.startsWith('random')) assert.equal(blob.length, input.length + 42, name);
+      if (['code-js', 'code-bundle', 'code-worker', 'pdf-flate', 'gzip'].includes(name))
+        assert.ok(blob.length - 42 < previous.length * 0.97, name);
+      if (name === 'docx') assert.ok(blob.length - 42 < previous.length * 0.99, name);
+      if (name === 'code-short') assert.ok(blob.length - 42 < previous.length * 0.99, name);
+      if (name === 'zip') assert.ok(blob.length - 42 < previous.length * 0.9, name);
+      if (['source', 'code-ts', 'code-python', 'code-cpp'].includes(name))
+        assert.ok(blob.length - 42 <= previous.length, name);
+    }
+  } finally {
+    key.destroy();
+  }
+});
+
+test('decompression handles frames without sizes and rejects invalid authenticated frames', async () => {
+  const key = Key.fromMaster(Buffer.alloc(32));
+  const input = Buffer.alloc(2 << 20, 97);
+  const ad = 'test/frame-size';
+  try {
+    const frame = zstdCompressSync(input, { params: { [constants.ZSTD_c_contentSizeFlag]: 0 } });
+    const blob = sealBody(Buffer.concat([Buffer.from([1]), frame]), ad);
+    assert.deepEqual(key.open(blob, ad), input);
+    assert.deepEqual(await key.openChunk(blob, key.chunkID(input), ad), input);
+
+    const prefix = Buffer.from('original header\n');
+    const concatenated = sealBody(
+      Buffer.concat([Buffer.from([1]), zstdCompressSync(prefix), zstdCompressSync(input)]),
+      ad,
+    );
+    const combined = Buffer.concat([prefix, input]);
+    assert.deepEqual(key.open(concatenated, ad), combined);
+    assert.deepEqual(await key.openChunk(concatenated, key.chunkID(combined), ad), combined);
+
+    // A single-segment frame claims a nearly 2^64-byte output. The size parser and decoder
+    // must reject it without trying to allocate the declared size.
+    const huge = Buffer.from('28b52ffde0feffffffffffffff010000', 'hex');
+    const oversized = Buffer.from('28b52ffde00100001000000000010000', 'hex');
+    for (const frame of [Buffer.alloc(0), huge, oversized, zstdCompressSync(input).subarray(0, 9)]) {
+      const invalid = sealBody(Buffer.concat([Buffer.from([1]), frame]), ad);
+      assert.throws(
+        () => key.open(invalid, ad),
+        error => error === errDecrypt,
+      );
+      await assert.rejects(key.openChunk(invalid, key.chunkID(input), ad), /decryption failed/);
+    }
+  } finally {
+    key.destroy();
   }
 });
 
@@ -234,7 +324,9 @@ test('bounded compression output keeps native frames and plaintext ownership acr
       Buffer.concat([random(maxSize), Buffer.alloc(maxSize, 97)]),
     ]) {
       const original = Buffer.from(input);
-      const compressed = zstdCompressSync(input, { params: { [constants.ZSTD_c_compressionLevel]: 1 } });
+      const compressed = zstdCompressSync(input, {
+        params: { [constants.ZSTD_c_compressionLevel]: 1, [constants.ZSTD_c_windowLog]: 23 },
+      });
       const id = key.chunkID(input);
       for (const blob of [key.seal(input, ad), await key.sealChunk(input, id, ad)]) {
         // XChaCha20 is HChaCha20 on the first 16 nonce bytes, then ChaCha20 with the last 8.

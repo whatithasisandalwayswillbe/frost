@@ -12,14 +12,14 @@ import {
   timingSafeEqual,
   type KeyObject,
 } from 'node:crypto';
-import { constants, zstdCompressSync, zstdDecompressSync } from 'node:zlib';
 import { isMarkedAsUntransferable } from 'node:worker_threads';
 import { decode, encode } from './bip39.js';
 import { runCryptoWorker, workerReady } from './crypto-pool.js';
+import { compress, decompress, zstdContentSize, maxPlaintextSize } from './compression.js';
 
 const keySize = 32;
 // Largest plaintext, before compression or after decompression.
-export const maxPlaintextSize = 256 << 20;
+export { maxPlaintextSize };
 export const errDecrypt = new Error('decryption failed: wrong key or corrupted data');
 export type ID = string;
 
@@ -32,30 +32,6 @@ export interface CryptoJob {
   mac: Uint8Array;
   id: string;
   ad: string;
-}
-
-// Reads the decompressed size from a zstd frame header, or returns undefined when the frame
-// doesn't record one. Large outputs are decompressed in a worker.
-function zstdContentSize(data: Buffer): number | undefined {
-  if (data.length < 6 || data.readUInt32LE() !== 0xfd2fb528) return undefined;
-
-  // The descriptor holds the size field flag (bits 6 and 7), the single segment flag (bit 5) and
-  // the dictionary ID size (bits 0 and 1). Single segment frames have no window byte.
-  const descriptor = data[4],
-    single = (descriptor & 32) !== 0,
-    flag = descriptor >>> 6;
-  const dict = [0, 1, 2, 4][descriptor & 3],
-    sizeBytes = flag === 0 ? (single ? 1 : 0) : [0, 2, 4, 8][flag],
-    offset = 5 + (single ? 0 : 1) + dict;
-  if (!sizeBytes || offset + sizeBytes > data.length) return undefined;
-  if (sizeBytes === 8) {
-    const value = data.readBigUInt64LE(offset);
-    return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : undefined;
-  }
-
-  // A 2-byte size is stored minus 256.
-  const value = data.readUIntLE(offset, sizeBytes);
-  return sizeBytes === 2 ? value + 256 : value;
 }
 
 // Checks a 64-digit hex chunk ID and returns it in lower case.
@@ -219,7 +195,7 @@ export class Key {
       if (job.kind === 'open') data = key.open(source, job.ad);
       else if (job.kind === 'inflate') {
         try {
-          data = zstdDecompressSync(source, { maxOutputLength: maxPlaintextSize });
+          data = decompress(source);
         } catch {
           throw errDecrypt;
         }
@@ -325,16 +301,11 @@ export class Key {
 
   // Seals plaintext as version(1) | nonce(24) | ciphertext | tag(16), 42 bytes more than the
   // payload. The ciphertext starts with an encrypted flag byte, 1 for zstd or 0 for stored as is.
-  // zstd level 1 output is kept only when it's smaller.
+  // Compression searches up to 8 MiB back within the object and only keeps smaller output.
   seal(plaintext: Buffer, ad: string): Buffer {
     this.#assertAlive();
     if (plaintext.length > maxPlaintextSize) throw new Error('crypto: plaintext exceeds MaxPlaintextSize');
-    const compressed = zstdCompressSync(plaintext, {
-      chunkSize: plaintext.length < 16384 ? 16384 : Math.min((8 << 20) + 16384, plaintext.length + 16384),
-      params: { [constants.ZSTD_c_compressionLevel]: 1 },
-    });
-    const payload = compressed.length < plaintext.length ? compressed : plaintext;
-
+    const payload = compress(plaintext);
     // For XChaCha20-Poly1305, HChaCha20 derives a subkey from the first 16 nonce bytes, and
     // ChaCha20-Poly1305 takes four zero bytes plus the last 8 nonce bytes as its nonce.
     const nonce = randomBytes(24);
@@ -347,7 +318,7 @@ export class Key {
         { authTagLength: 16 },
       );
       cipher.setAAD(Buffer.from(ad), { plaintextLength: payload.length + 1 });
-      const encryptedFlag = cipher.update(Buffer.from([payload === compressed ? 1 : 0]));
+      const encryptedFlag = cipher.update(Buffer.from([payload === plaintext ? 0 : 1]));
       const encryptedPayload = cipher.update(payload);
       return Buffer.concat(
         [Buffer.from([1]), nonce, encryptedFlag, encryptedPayload, cipher.final(), cipher.getAuthTag()],
@@ -373,7 +344,7 @@ export class Key {
     }
     if (body[0] === 1) {
       try {
-        return zstdDecompressSync(body.subarray(1), { maxOutputLength: maxPlaintextSize });
+        return decompress(body.subarray(1));
       } catch {
         throw errDecrypt;
       }

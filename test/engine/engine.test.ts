@@ -16,6 +16,7 @@ import { mtime } from '../../src/engine/backup.js';
 import { openRoot } from '../../src/platform/fs-root.js';
 import { countChanges } from '../../src/engine/changes.js';
 import { loadFFI } from '../../src/platform/ffi-loader.js';
+import { compressionData } from '../core/compression-data.js';
 
 // Change lists are base64 runs of 16-byte entries: an 8-byte path key and an 8-byte content
 // hash. Identical lists must be recognised without decoding a single entry.
@@ -76,6 +77,18 @@ test('backup restores exact regular files, empty files, directory metadata and p
   assert.deepEqual(await readFile(path.join(target, 'docs', 'big')), bytes);
   assert.equal((await readFile(path.join(target, 'docs', 'small'))).toString(), 'hello');
   assert.equal((await readFile(path.join(target, 'empty'))).length, 0);
+});
+
+test('mixed compressed and uncompressed files restore byte-for-byte without a manifest', async t => {
+  const f = await fixture(t);
+  const files = compressionData();
+  for (const [name, bytes] of files) await f.write(name, bytes);
+  const result = await f.engine.backup({ paths: [f.src], host: 'compression' });
+  const target = path.join(f.root, 'restored');
+  await new Engine(f.repo).restore(result.snapshot.id, { target, base: f.src.replaceAll('\\', '/') });
+  for (const [name, bytes] of files) assert.deepEqual(await readFile(path.join(target, name)), bytes, name);
+  assert.equal(result.snapshot.stats.files, files.size);
+  assert.deepEqual((await f.engine.verify(100000, true)).failures ?? [], []);
 });
 
 test('unchanged skips all writes, directory mtime, and rereads; file mtime remains a change', async t => {
