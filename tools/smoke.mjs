@@ -124,11 +124,12 @@ export async function smokeFixture(work) {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 
-  // Point a default config at the server, with scheduling, verification sampling and automatic updates off.
+  // Point a default config at the server, with verification sampling and automatic updates off. Automatic
+  // backups stay on, because a scheduled run does nothing without them. No job is installed, since frost only
+  // touches one it recorded installing.
   const cfg = defaultConfig();
   cfg.paths = [source];
   cfg.exclude = [];
-  cfg.schedule.enabled = false;
   cfg.verify.sample = 0;
   cfg.update.auto = false;
   cfg.storage.backend = 'permafrost';
