@@ -8,7 +8,7 @@ import { location, type Backend } from '../core/storage.js';
 import { Context } from './context.js';
 import { Block, printable } from './format.js';
 import { explainConnect, probe } from './connect.js';
-import { loadKnown, moveHint } from './known.js';
+import { loadKnown, movable, moveHint } from './known.js';
 
 // Snapshots or trees without a frost.repo mean backups were moved without it.
 async function hasObjects(b: Backend, signal?: AbortSignal): Promise<boolean> {
@@ -78,12 +78,8 @@ export async function checkStorageChange(
         );
       let msg = 'There are no backups in ' + where + '.';
       if (known.shown && known.shown !== where) msg += ' Yours are in ' + known.shown + '.';
-      return problem(
-        msg +
-          ' To use them there, ' +
-          moveHint(now, where) +
-          ' first. To start a separate set of backups there, run `frost init`.',
-      );
+      if (movable(known.storage ?? was, now)) msg += ' To use them there, ' + moveHint(where) + ' first.';
+      return problem(msg + ' To start a separate set of backups there, run `frost init`.');
     }
     if (e === errWrongKey)
       return unopenable(

@@ -8,7 +8,7 @@ import * as update from '../platform/update.js';
 import { Context } from './context.js';
 import { ago, Block, humanBytes, humanCount, inTime, plural, printable, when } from './format.js';
 import { missingList, readUsage, usageNotice } from './backup.js';
-import { loadKnown, moveHint, StorageError } from './known.js';
+import { loadKnown, movable, moveHint, StorageError } from './known.js';
 import { updateSummary, updateStatePath } from './update.js';
 import { loadRuns, nextBackup } from './runs.js';
 
@@ -192,8 +192,9 @@ export async function runStatus(ctx: Context, verify: boolean, all: boolean): Pr
       b.warnRow(
         'missing',
         f.caution(goneText(missing) + '.') +
-          '\n' +
-          f.dim('If you moved your backups, ' + moveHint(a.cfg.storage, String(e.repo.backend)) + '.'),
+          (movable(a.cfg.storage)
+            ? '\n' + f.dim('If you moved your backups, ' + moveHint(String(e.repo.backend)) + '.')
+            : ''),
       );
 
     b.gap();

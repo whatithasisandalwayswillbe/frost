@@ -271,7 +271,7 @@ export class Context {
         throw await cantOpen(`${backend} has no frost repository`, cfg.storage, backend, true);
       if (e === errWrongKey)
         throw await cantOpen(
-          `the key on this machine doesn't match ${backend} (check it with \`frost key verify\`)`,
+          `the key on this machine doesn't match the backups in ${backend} (check it with \`frost key verify\`)`,
           cfg.storage,
           backend,
           false,

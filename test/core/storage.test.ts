@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import {
   APIError,
   PermafrostBackend,
+  defaultPermafrostURL,
   S3Backend,
   readBounded,
   hash,
@@ -293,6 +294,11 @@ test('Permafrost reference server contract, retries and paginated conformance', 
   );
   assert.equal((await backend.usage()).readOnly, true);
   assert.deepEqual(await backend.get('big'), Buffer.alloc(950));
+});
+
+test('Permafrost output names the default server without its host', () => {
+  assert.equal(String(new PermafrostBackend(defaultPermafrostURL, 'tok')), 'Permafrost');
+  assert.equal(String(new PermafrostBackend('https://backup.example.com', 'tok')), 'Permafrost (backup.example.com)');
 });
 
 test('Permafrost usage rejects sizes that are not whole byte counts', async t => {

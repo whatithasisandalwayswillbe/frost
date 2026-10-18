@@ -5,7 +5,13 @@ import { randomBytes } from 'node:crypto';
 import { Key } from '../core/crypto.js';
 import { words } from '../core/bip39.js';
 import { Repo, errWrongKey, errNotInitialized } from '../core/repo.js';
-import { APIError, errConditionalUnsupported, errExists, type Backend } from '../core/storage.js';
+import {
+  APIError,
+  defaultPermafrostHost,
+  errConditionalUnsupported,
+  errExists,
+  type Backend,
+} from '../core/storage.js';
 import type { Storage } from '../core/config.js';
 import { RepoState, ConnectError } from '../tui/setup.js';
 import { sentence } from '../tui/render.js';
@@ -24,6 +30,14 @@ export function phraseKey(phrase: string): Key {
       throw new Error("all the words are real, but they don't make a valid phrase. Check their order and spelling");
     throw e;
   }
+}
+
+// A failed lookup of the default Permafrost server names its host, which means nothing to the person. The
+// message says Permafrost instead.
+export const cantReachPermafrost = "can't reach Permafrost, check your internet connection and try again";
+export function permafrostLookupFailed(error: unknown): boolean {
+  const err = error as NodeJS.ErrnoException & { hostname?: string };
+  return (err?.code === 'ENOTFOUND' || err?.code === 'EAI_AGAIN') && err.hostname === defaultPermafrostHost;
 }
 
 // Turns a storage error into advice. A ConnectError names the setup answer to go back to.
@@ -63,6 +77,7 @@ export function explainConnect(error: unknown): Error {
   if (err.code && codes[err.code]) return new ConnectError(...codes[err.code]);
 
   // Network and certificate errors mostly point at the address.
+  if (permafrostLookupFailed(err)) return new Error(cantReachPermafrost);
   if (err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN')
     return new ConnectError(
       'address',

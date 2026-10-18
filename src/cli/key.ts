@@ -119,7 +119,9 @@ export async function runKey(ctx: Context, action: string): Promise<void> {
       try {
         await Repo.open(b, key, ctx.signal);
       } catch (err) {
-        throw new Error(`this phrase can't open ${b}: ${(err as Error).message}`);
+        // Permafrost is a service rather than a place, so the message names the backups in it.
+        const what = cfg.storage.backend === 'permafrost' ? 'your backups in ' + b : String(b);
+        throw new Error(`this phrase can't open ${what}: ${(err as Error).message}`);
       }
       p.ok('opens the repository at ' + printable(String(b)));
     } else p.line(f.dim("No config yet, so the phrase wasn't checked against any storage. Run `frost init` next."));

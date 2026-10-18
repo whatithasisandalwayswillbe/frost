@@ -3,6 +3,7 @@
 
 import type { Storage } from './types.js';
 import type { Field } from './input.js';
+import { permafrostName } from '../core/storage.js';
 
 export const projectLink = 'getfro.st';
 
@@ -284,6 +285,6 @@ export function matchProvider(s: Storage): number {
 export function describeStorage(s: Storage): string {
   const p = providers[matchProvider(s)];
   return s.backend === 'permafrost'
-    ? p.name + (s.permafrost.url ? ', ' + hostOf(s.permafrost.url) : '')
+    ? permafrostName(s.permafrost.url)
     : p.name + ', bucket ' + s.s3.bucket + (s.s3.prefix ? '/' + s.s3.prefix.replace(/^\/+|\/+$/g, '') : '');
 }

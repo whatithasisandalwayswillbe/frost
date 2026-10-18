@@ -16,8 +16,28 @@ export const errConditionalUnsupported = new Error(
 // The largest sealed object: 256 MiB of plaintext plus room for the seal.
 const maxObjectSize = (256 << 20) + 64;
 export const defaultPermafrostURL = 'https://permafrost.wihiaawb.com';
+export const defaultPermafrostHost = new URL(defaultPermafrostURL).host;
 // Where people get a key for the default server. Setup opens it, and the key is pasted back in.
 export const permafrostKeyPage = 'https://getfro.st/perma';
+// Where people with an account get a new key, which stops the old one working.
+export const permafrostRecoverPage = permafrostKeyPage + '/recover';
+export const permafrostSupport = 'care@getfro.st';
+
+// The host a storage.permafrost.url setting points at. Blank means the default server.
+function permafrostHost(url: string): string {
+  try {
+    return url ? new URL(url).host : defaultPermafrostHost;
+  } catch {
+    return url;
+  }
+}
+
+export const isDefaultPermafrost = (url: string) => permafrostHost(url) === defaultPermafrostHost;
+
+// How output names a Permafrost server. The default server is just Permafrost, and a custom one adds its host.
+export function permafrostName(url: string): string {
+  return isDefaultPermafrost(url) ? 'Permafrost' : `Permafrost (${permafrostHost(url)})`;
+}
 
 export function newBackend(storage: Storage): Backend {
   if (storage.backend === 's3') return new S3Backend(storage.s3);
@@ -200,7 +220,7 @@ export class PermafrostBackend implements Backend {
   }
 
   toString(): string {
-    return 'permafrost:' + this.#base.host;
+    return permafrostName(this.#base.toString());
   }
 
   // The server plus a short hash of the token, so a different account is a different location

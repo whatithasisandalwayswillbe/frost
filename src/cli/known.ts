@@ -4,7 +4,14 @@
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import * as config from '../core/config.js';
-import { location, type Backend } from '../core/storage.js';
+import {
+  isDefaultPermafrost,
+  location,
+  permafrostName,
+  permafrostRecoverPage,
+  permafrostSupport,
+  type Backend,
+} from '../core/storage.js';
 import { frostCommand } from './command.js';
 
 // `where` identifies the storage location, and `shown` is how it's printed. `checked` is a location whose
@@ -21,11 +28,15 @@ interface Known {
 // One record per config folder, named after a hash of its path.
 export const knownPath = () => path.join(config.cacheDir(), 'storage-' + config.dirTag() + '.json');
 
-// A missing, unparseable or non-object record counts as empty.
+// A missing, unparseable or non-object record counts as empty. Older records show Permafrost as
+// "permafrost:<host>", so its name is worked out again from the settings.
 export async function loadKnown(): Promise<Known> {
   try {
     const parsed: unknown = JSON.parse(await readFile(knownPath(), 'utf8'));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Known) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const k = parsed as Known;
+    if (k.storage?.backend === 'permafrost') k.shown = permafrostName(k.storage.permafrost?.url ?? '');
+    return k;
   } catch {
     return {};
   }
@@ -62,11 +73,14 @@ export async function rememberFailure(err: Error): Promise<void> {
   await saveKnown(k).catch(() => {});
 }
 
+// Backups move by hand only between storages with folders. Permafrost has none, so with it on either side, no
+// move is suggested.
+export const movable = (...storages: (config.Storage | undefined)[]) =>
+  storages.every(s => s?.backend !== 'permafrost');
+
 // How to move existing backups to `shown`.
-export const moveHint = (s: config.Storage, shown: string) =>
-  s.backend === 's3'
-    ? 'move the whole folder (frost.repo, chunks/, snapshots/ and trees/) to ' + shown
-    : 'copy every object of your backups to ' + shown;
+export const moveHint = (shown: string) =>
+  'move the whole folder (frost.repo, chunks/, snapshots/ and trees/) to ' + shown;
 
 // The settings that decide where backups live. After a change of backend, nothing else is compared.
 function changedStorage(a: config.Storage, b: config.Storage): { key: string; was: string; now: string }[] {
@@ -87,14 +101,29 @@ function changedStorage(a: config.Storage, b: config.Storage): { key: string; wa
 // Quotes a setting value for the comparison text, if it's empty or has spaces or quotes in it.
 const quoteValue = (v: string): string => (!v || /[ \t'"]/.test(v) ? JSON.stringify(v) : v);
 
-// Explains where the backups might be. If the repository is missing from where it was last opened, it was
-// moved. If the settings now point elsewhere, it lists what changed and offers three ways out.
+// Explains a repository missing from where it was last opened. Backups in a folder were probably moved. Permafrost
+// refuses the access key once it removes an account's backups itself, so with the key still working, they were most
+// likely deleted using it.
+function goneHint(s: config.Storage): string {
+  const here = 'This is where your backups were.';
+  if (s.backend !== 'permafrost')
+    return here + ' If you moved them, move all of them back, or point frost at where they are now.';
+  if (!isDefaultPermafrost(s.permafrost.url)) return here + ' Ask whoever runs this server what happened to them.';
+  return (
+    here +
+    ' Permafrost keeps backups while their access key works, so they were most likely deleted using yours. Email ' +
+    permafrostSupport +
+    ' straight away. If someone else might have your key, get a new one at ' +
+    permafrostRecoverPage.replace('https://', '') +
+    '.'
+  );
+}
+
+// Explains where the backups might be. If the repository is missing from where it was last opened, goneHint says
+// why. If the settings now point elsewhere, it lists what changed and offers ways out.
 function storageHint(k: Known, s: config.Storage, b: Backend, missing: boolean): string {
   if (!k.where) return '';
-  if (k.where === location(b))
-    return missing
-      ? 'This is where your backups were. If you moved them, move all of them back, or point frost at where they are now.'
-      : '';
+  if (k.where === location(b)) return missing ? goneHint(s) : '';
 
   const changed = k.storage ? changedStorage(k.storage, s) : [];
   const lines = ['Your backups were last opened in ' + k.shown + '.'];
@@ -113,15 +142,11 @@ function storageHint(k: Known, s: config.Storage, b: Backend, missing: boolean):
         } catch {
           // Values the platform shell can't preserve use the existing editor hint.
         }
-    }
+    } else if (s.backend === 'permafrost') back = 'frost init, with the access key you used before';
   }
-  lines.push(
-    '',
-    'Do one of these:',
-    '  put it back:       ' + back,
-    '  keep the change:   ' + moveHint(s, String(b)),
-    '  start over there:  frost init (your old backups stay where they are)',
-  );
+  lines.push('', 'Do one of these:', '  put it back:       ' + back);
+  if (movable(k.storage, s)) lines.push('  keep the change:   ' + moveHint(String(b)));
+  lines.push('  start over there:  frost init (your old backups stay where they are)');
   return lines.join('\n');
 }
 

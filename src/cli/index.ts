@@ -3,6 +3,7 @@
 
 import * as config from '../core/config.js';
 import { APIError } from '../core/storage.js';
+import { cantReachPermafrost, permafrostLookupFailed } from './connect.js';
 import { Context, type ContextOptions } from './context.js';
 import { commands, rootHelp } from './help.js';
 import { runBackup } from './backup.js';
@@ -203,9 +204,10 @@ export async function run(argv: string[], ctx = new Context()): Promise<void> {
   }
 }
 
-// Replaces a rejected Permafrost key, even one buried in an error's causes, with advice on fixing it. The
-// server's own reason comes first when it gave one.
+// Replaces a rejected Permafrost key or a failed lookup of the default server, even one buried in an error's
+// causes, with advice on fixing it. The server's own reason comes first when it gave one.
 function plainError(err: unknown): unknown {
+  if (permafrostLookupFailed(err)) return new Error(cantReachPermafrost);
   if (err instanceof APIError && err.status === 401)
     return new Error(
       'the Permafrost access key was rejected' +
