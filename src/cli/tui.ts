@@ -45,6 +45,7 @@ export async function runBrowser(ctx: Context): Promise<void> {
       a.cfg,
       state,
       { signal: ctx.signal, colorProfile: ctx.fmt.profile },
+      { openBrowser: ctx.hooks.openBrowser },
     );
   } catch (err) {
     // A restore the user stopped prints as a one-line result, not an error.

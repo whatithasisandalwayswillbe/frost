@@ -24,6 +24,8 @@ export const defaultPermafrostURL = 'https://permafrost.wihiaawb.com';
 export const defaultPermafrostHost = new URL(defaultPermafrostURL).host;
 // Where people get a key for the default server. Setup opens it, and the key is pasted back in.
 export const permafrostKeyPage = 'https://getfro.st/perma';
+
+export const permafrostAccountPage = permafrostKeyPage + '/portal';
 // Where people with an account get a new key, which stops the old one working.
 export const permafrostRecoverPage = permafrostKeyPage + '/recover';
 export const permafrostSupport = 'care@getfro.st';

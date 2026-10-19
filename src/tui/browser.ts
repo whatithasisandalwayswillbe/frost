@@ -4,6 +4,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { cacheDir } from '../core/config.js';
+import { isDefaultPermafrost, permafrostAccountPage } from '../core/storage.js';
 import { shorten, shortOf, diff } from '../core/snapshot.js';
 import { besideFolder, newRestoreFolder, canOverwrite, RestoreError } from '../engine/restore.js';
 import * as desktop from '../platform/desktop.js';
@@ -119,6 +120,7 @@ export interface BrowserDeps {
   canPick(): boolean | Promise<boolean>;
   pickFolder(title: string, start: string, signal?: AbortSignal): Promise<string>;
   openFolder(p: string, file: boolean): Promise<void>;
+  openBrowser?(url: string): Promise<void>;
   besideFolder: typeof besideFolder;
   newRestoreFolder: typeof newRestoreFolder;
   canOverwrite: typeof canOverwrite;
@@ -130,6 +132,7 @@ const defaults: BrowserDeps = {
   canPick: desktop.canPick,
   pickFolder: (title, start, signal) => desktop.pickFolder(title, start, { signal }),
   openFolder: (p, file) => (file ? desktop.reveal(p) : desktop.openFolder(p)),
+  openBrowser: desktop.openBrowser,
   besideFolder,
   newRestoreFolder,
   canOverwrite,
@@ -447,7 +450,14 @@ export class BrowserModel {
     }
 
     if (this.overlay) {
-      if (['esc', 'h', 's', 'q', '?'].includes(k)) {
+      if (this.overlay === 'help' && k === 'p' && this.hasPermafrostAccount()) {
+        try {
+          if (!this.deps.canOpen() || !this.deps.openBrowser) throw new Error('no browser is available');
+          await this.deps.openBrowser(permafrostAccountPage);
+        } catch {
+          this.err = new Error('Open ' + permafrostAccountPage + ' in your browser to manage your Permafrost account.');
+        }
+      } else if (['esc', 'h', 's', 'q', '?'].includes(k)) {
         this.overlay = '';
         this.overlayTop = 0;
       } else if (['up', 'k'].includes(k)) this.overlayTop = Math.max(this.overlayTop - 1, 0);
@@ -1071,6 +1081,10 @@ export class BrowserModel {
     return this.dialogMaxTop(height(this.overlayContent()));
   }
 
+  hasPermafrostAccount(): boolean {
+    return this.cfg.storage.backend === 'permafrost' && isDefaultPermafrost(this.cfg.storage.permafrost.url);
+  }
+
   // Lists the keys, in two columns when the dialog is wide enough.
   helpContent(w: number): string {
     const cw = w >= 68 ? Math.trunc((w - 3) / 2) : w;
@@ -1116,7 +1130,10 @@ export class BrowserModel {
         : stack(everywhere, fill(1), moving, fill(1), snapshots, fill(1), files);
     let footer = style('dim', 'Documentation  ') + style('bold', 'getfro.st/help');
     if (width(footer) > w) footer = stack(para('dim', 'Documentation', w), para('bold', 'getfro.st/help', w));
-    return stack(body, fill(1), footer);
+    const account = this.hasPermafrostAccount()
+      ? stack(...wrapStyled(style('bold', '[p]') + ' Permafrost account', w))
+      : '';
+    return stack(body, fill(1), footer, ...(account ? [fill(1), account] : []));
   }
 
   // Shows the config read-only. Narrow dialogs put each label above its value.

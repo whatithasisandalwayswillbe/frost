@@ -94,6 +94,58 @@ function browser(repo: Partial<BrowserRepo> = {}, deps: Partial<BrowserDeps> = {
   return m;
 }
 
+test('Permafrost account access opens only from help for the default service', async () => {
+  const opened: string[] = [];
+  const m = browser(
+    {},
+    {
+      canOpen: () => true,
+      openBrowser: async url => {
+        opened.push(url);
+      },
+    },
+  );
+  m.loading = '';
+  m.cfg.storage.backend = 'permafrost';
+  await m.onKey('p');
+  assert.deepEqual(opened, []);
+  await m.onKey('h');
+  assert.match(strip(m.helpContent(76)), /\[p\] Permafrost account/);
+  await m.onKey('p');
+  assert.deepEqual(opened, ['https://getfro.st/perma/portal']);
+  assert.equal(m.overlay, 'help');
+  for (const [backend, url] of [
+    ['permafrost', 'https://private.example'],
+    ['s3', ''],
+  ]) {
+    m.cfg.storage.backend = backend;
+    m.cfg.storage.permafrost.url = url;
+    assert.ok(!strip(m.helpContent(76)).includes('Permafrost account'));
+    await m.onKey('p');
+  }
+  assert.equal(opened.length, 1);
+  m.cfg.storage.backend = 'permafrost';
+  m.cfg.storage.permafrost.url = '';
+  m.deps.canOpen = () => false;
+  await m.onKey('p');
+  assert.equal(opened.length, 1);
+  assert.match(m.err!.message, /Open https:\/\/getfro.st\/perma\/portal in your browser/);
+  m.err = undefined;
+  m.deps.canOpen = () => true;
+  m.deps.openBrowser = async () => {
+    throw new Error('unavailable');
+  };
+  await m.onKey('p');
+  assert.match(m.err!.message, /Open https:\/\/getfro.st\/perma\/portal in your browser/);
+  m.err = undefined;
+  for (const w of [1, 20, 40, 76]) {
+    m.resize(w, 24);
+    assert.equal(width(m.view()), w);
+    assert.equal(height(m.view()), 24);
+  }
+  m.close();
+});
+
 // A key whose phrase is word0 to word23, so tests can type single words.
 const key = {
   phrase: () => Array.from({ length: 24 }, (_, i) => 'word' + i).join(' '),
