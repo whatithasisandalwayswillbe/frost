@@ -29,12 +29,14 @@ interface Known {
 export const knownPath = () => path.join(config.cacheDir(), 'storage-' + config.dirTag() + '.json');
 
 // A missing, unparseable or non-object record counts as empty. Older records show Permafrost as
-// "permafrost:<host>", so its name is worked out again from the settings.
+// "permafrost:<host>", so its name is worked out again from the settings, and records from before
+// self-hosted and local drive storage get those settings' defaults.
 export async function loadKnown(): Promise<Known> {
   try {
     const parsed: unknown = JSON.parse(await readFile(knownPath(), 'utf8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const k = parsed as Known;
+    if (k.storage && typeof k.storage === 'object') k.storage = { ...config.defaultConfig().storage, ...k.storage };
     if (k.storage?.backend === 'permafrost') k.shown = permafrostName(k.storage.permafrost?.url ?? '');
     return k;
   } catch {
@@ -95,17 +97,27 @@ function changedStorage(a: config.Storage, b: config.Storage): { key: string; wa
     add('storage.s3.bucket', a.s3.bucket, b.s3.bucket);
     add('storage.s3.prefix', a.s3.prefix, b.s3.prefix);
   } else if (b.backend === 'permafrost') add('storage.permafrost.url', a.permafrost.url, b.permafrost.url);
+  else if (b.backend === 'sftp') {
+    add('storage.sftp.host', a.sftp.host, b.sftp.host);
+    add('storage.sftp.port', String(a.sftp.port), String(b.sftp.port));
+    add('storage.sftp.path', a.sftp.path, b.sftp.path);
+  } else if (b.backend === 'local') add('storage.local.path', a.local.path, b.local.path);
   return result;
 }
 
 // Quotes a setting value for the comparison text, if it's empty or has spaces or quotes in it.
 const quoteValue = (v: string): string => (!v || /[ \t'"]/.test(v) ? JSON.stringify(v) : v);
 
-// Explains a repository missing from where it was last opened. Backups in a folder were probably moved. Permafrost
-// refuses the access key once it removes an account's backups itself, so with the key still working, they were most
-// likely deleted using it.
+// Explains a repository missing from where it was last opened. Backups in a folder were probably moved, and on a
+// drive, another drive may be mounted in its place. Permafrost refuses the access key once it removes an account's
+// backups itself, so with the key still working, they were most likely deleted using it.
 function goneHint(s: config.Storage): string {
   const here = 'This is where your backups were.';
+  if (s.backend === 'local')
+    return (
+      here +
+      ' If another drive is connected in its place, connect the one with your backups. If you moved them, move all of them back, or point frost at where they are now.'
+    );
   if (s.backend !== 'permafrost')
     return here + ' If you moved them, move all of them back, or point frost at where they are now.';
   if (!isDefaultPermafrost(s.permafrost.url)) return here + ' Ask whoever runs this server what happened to them.';

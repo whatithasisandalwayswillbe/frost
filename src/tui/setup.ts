@@ -6,7 +6,7 @@ import { permafrostKeyPage } from '../core/storage.js';
 import { Excluder } from '../engine/exclude.js';
 import type { Config, Storage, Key } from './types.js';
 import { Form, problem, inputBox, type KeyEvent } from './input.js';
-import { providers, matchProvider, describeStorage, projectLink } from './providers.js';
+import { providers, choices, choiceOf, selfHosted, matchProvider, describeStorage, projectLink } from './providers.js';
 import {
   style,
   width,
@@ -57,7 +57,9 @@ export class ConnectError extends Error {
 // and tests and the demo stub them.
 export interface SetupDeps {
   localKey?: Key;
-  connect(s: Storage, signal?: AbortSignal): Promise<RepoState>;
+  // acceptNewHostKey trusts a self-hosted server's SSH host key the first time it's seen, after someone added
+  // frost's key to it by hand.
+  connect(s: Storage, signal?: AbortSignal, options?: { acceptNewHostKey?: boolean }): Promise<RepoState>;
   newKey(): Key | Promise<Key>;
   unlock(s: Storage, phrase: string, signal?: AbortSignal): Promise<Key>;
   // Creates the repository if it's new, saves the config and key, and returns the rows of the
@@ -70,6 +72,11 @@ export interface SetupDeps {
   elsewhere?(s: Storage): string;
   // Opens a web page in the browser, like the page where people get a Permafrost key.
   openBrowser?(url: string): void;
+  // Adds frost's SSH key to a self-hosted server with ssh, which asks for the password in the terminal.
+  addKey?(s: Storage): Promise<void>;
+  // Where frost's public SSH key is, as setup shows it, and a way to show the file in the file manager.
+  keyFile?(): string;
+  reveal?(file: string): void;
   // Cleans up a typed folder path and returns the indexes of listed folders inside it.
   addPath?(
     typed: string,
@@ -87,7 +94,10 @@ type SetupStep =
   | 'welcome'
   | 'storage'
   | 'permaChoice'
+  | 's3Choice'
   | 'details'
+  | 'keyChoice'
+  | 'keyManual'
   | 'folders'
   | 'skip'
   | 'schedule'
@@ -101,7 +111,7 @@ type SetupStep =
 const stepNames = ['', 'storage', 'folders', 'schedule', 'recovery phrase', 'review'];
 
 function stepOf(s: SetupStep): number {
-  if (['storage', 'permaChoice', 'details'].includes(s)) return 1;
+  if (['storage', 'permaChoice', 's3Choice', 'details', 'keyChoice', 'keyManual'].includes(s)) return 1;
   if (['folders', 'skip'].includes(s)) return 2;
   if (s === 'schedule') return 3;
   if (['phrase', 'check', 'unlock'].includes(s)) return 4;
@@ -208,10 +218,13 @@ export class SetupModel {
   note = '';
   feedbackTop = 0;
 
-  // provCur is the highlighted provider, prov is the one whose form is open, and pending holds the
-  // storage settings being tried.
+  // provCur is the highlighted choice in the storage list and s3Cur the highlighted S3 service. prov is the
+  // provider whose form is open, and pending holds the storage settings being tried. keyCur is the highlighted
+  // way of adding frost's SSH key.
   provCur = 0;
+  s3Cur = 0;
   prov = 0;
+  keyCur = 0;
   details = new Form();
   pending: Storage;
   connected = false;
@@ -245,8 +258,10 @@ export class SetupModel {
   saved = false;
   savedRows: [string, string][] = [];
 
-  // runTerminal sets this, and async work calls it to redraw.
+  // runTerminal sets these. Async work calls onChange to redraw, and suspend hands the terminal to work that
+  // needs it, like ssh asking for a password.
   onChange?: () => void;
+  suspend?: <T>(work: () => Promise<T>) => Promise<T>;
 
   // Works on a copy of the config, so nothing changes until finish saves it. An existing setup
   // starts with its folders, skip list and schedule visited, so advance can go straight to review.
@@ -260,7 +275,7 @@ export class SetupModel {
     this.cfg = structuredClone(cfg);
     this.pending = structuredClone(cfg.storage);
     if (existing) for (const s of ['folders', 'skip', 'schedule'] as SetupStep[]) this.visited.add(s);
-    this.provCur = matchProvider(cfg.storage);
+    this.highlight(matchProvider(cfg.storage));
     this.schedCur = Math.max(this.schedOptions().indexOf(this.schedValue()), 0);
   }
 
@@ -352,15 +367,22 @@ export class SetupModel {
     this.goTo('unlock');
   }
 
+  // Highlights a provider in the storage list, and in the S3 list when it's an S3 service.
+  highlight(provider: number): void {
+    this.provCur = choiceOf(provider);
+    if (choices[this.provCur].providers.length > 1) this.s3Cur = choices[this.provCur].providers.indexOf(provider);
+  }
+
   // Tries storage settings and keeps them if they work. A failure opens that provider's form with
-  // the error, and puts the cursor on the field the error is about.
-  async connect(s: Storage): Promise<void> {
+  // the error, and puts the cursor on the field the error is about. A self-hosted server that won't
+  // take frost's SSH key yet goes to the screen for adding it instead.
+  async connect(s: Storage, options?: { acceptNewHostKey?: boolean }): Promise<void> {
     this.busy = 'Connecting to your storage';
     this.err = '';
     this.pending = structuredClone(s);
     this.onChange?.();
     try {
-      const state = await this.deps.connect(s, this.signal);
+      const state = await this.deps.connect(s, this.signal, options);
 
       // New settings or a different repository state mean the key step has to run again.
       if (
@@ -378,16 +400,31 @@ export class SetupModel {
       this.busy = '';
       await this.advance();
     } catch (e) {
+      const login = e instanceof ConnectError && e.about === 'login' && this.pending.backend === 'sftp';
+      if (login && (this.step === 'keyChoice' || this.step === 'keyManual')) {
+        this.err = message(e);
+        return;
+      }
+
       // Open the form for these settings unless it's already showing. The default server's Permafrost
-      // form sits behind permaChoice in the history, so esc goes back there.
+      // form sits behind permaChoice in the history, and an S3 service's behind the S3 list, so esc goes
+      // back there.
       if (this.step !== 'details') {
         const p = matchProvider(this.pending);
         this.openDetails(p);
         if (p === 0 && !this.pending.permafrost.url) {
           this.back.push(this.step);
           this.step = 'permaChoice';
+        } else if (choices[choiceOf(p)].providers.length > 1) {
+          this.back.push(this.step);
+          this.step = 's3Choice';
         }
         this.goTo('details');
+      }
+      if (login) {
+        this.keyCur = 0;
+        this.goTo('keyChoice');
+        return;
       }
       if (e instanceof ConnectError) {
         const i = this.details.fields.findIndex(f => f.about === e.about);
@@ -399,6 +436,19 @@ export class SetupModel {
       this.feedbackTop = 0;
       this.onChange?.();
     }
+  }
+
+  // Hands the terminal to ssh, which adds frost's key to the server once the password is typed, then connects
+  // again. Without a terminal to hand over, as in tests, it runs as it is.
+  async addKey(): Promise<void> {
+    const run = () => this.deps.addKey!(this.pending);
+    try {
+      await (this.suspend ? this.suspend(run) : run());
+    } catch (e) {
+      this.err = "The key wasn't added: " + message(e).replace(/\.$/, '') + '.';
+      return;
+    }
+    await this.connect(this.pending);
   }
 
   // True while keys go into a text box, so letters like q type instead of acting as shortcuts.
@@ -452,20 +502,52 @@ export class SetupModel {
         else if (key === 'esc') this.exited = true;
         break;
 
-      case 'storage':
+      case 'storage': {
+        const c = choices[this.provCur];
         if (['up', 'k'].includes(key)) this.provCur = Math.max(this.provCur - 1, 0);
-        else if (['down', 'j'].includes(key)) this.provCur = Math.min(this.provCur + 1, providers.length - 1);
+        else if (['down', 'j'].includes(key)) this.provCur = Math.min(this.provCur + 1, choices.length - 1);
         else if (key === 'enter') {
           // A custom Permafrost server hands out keys its own way, so it goes straight to the key.
           if (!this.provCur && !this.cfg.storage.permafrost.url) {
             this.permaCur = 0;
             this.goTo('permaChoice');
-          } else {
-            this.openDetails(this.provCur);
+          } else if (c.providers.length > 1) this.goTo('s3Choice');
+          else {
+            this.openDetails(c.providers[0]);
             this.goTo('details');
           }
         } else if (key === 'esc') this.goBack();
-        else if (/^[1-6]$/.test(key)) this.provCur = +key - 1;
+        else if (/^[1-9]$/.test(key) && +key <= choices.length) this.provCur = +key - 1;
+        break;
+      }
+
+      case 's3Choice': {
+        const list = choices[this.provCur].providers;
+        if (['up', 'k'].includes(key)) this.s3Cur = Math.max(this.s3Cur - 1, 0);
+        else if (['down', 'j'].includes(key)) this.s3Cur = Math.min(this.s3Cur + 1, list.length - 1);
+        else if (key === 'enter') {
+          this.openDetails(list[this.s3Cur]);
+          this.goTo('details');
+        } else if (key === 'esc') this.goBack();
+        else if (/^[1-9]$/.test(key) && +key <= list.length) this.s3Cur = +key - 1;
+        break;
+      }
+
+      case 'keyChoice':
+        if (['up', 'k', '1'].includes(key)) this.keyCur = 0;
+        else if (['down', 'j', '2'].includes(key)) this.keyCur = 1;
+        else if (key === 'esc') this.goBack();
+        else if (key === 'enter') {
+          if (this.keyCur) this.goTo('keyManual');
+          else await this.addKey();
+        }
+        break;
+
+      // The key was added by hand, so the server's host key may be new to this computer too.
+      case 'keyManual':
+        if (key === 'enter') await this.connect(this.pending, { acceptNewHostKey: true });
+        else if (key === 'o') this.deps.reveal?.(this.deps.keyFile?.() ?? '');
+        else if (key === 'esc') this.goBack();
         break;
 
       case 'permaChoice':
@@ -597,7 +679,7 @@ export class SetupModel {
         else if (key === 'esc') this.goBack();
         else if (['e', ' ', 'right', 'l'].includes(key)) {
           const step = this.reviewRows()[this.revCur].edit;
-          if (step === 'storage') this.provCur = matchProvider(this.cfg.storage);
+          if (step === 'storage') this.highlight(matchProvider(this.cfg.storage));
           else this.visited.delete(step);
           if (step === 'folders') this.folderSel = -1;
           if (step === 'skip') this.skipSel = -1;
@@ -691,7 +773,8 @@ export class SetupModel {
   // Opens provider i's form, filled in from the config when the config already uses that provider.
   // A saved Permafrost token is offered even when it doesn't.
   openDetails(i: number): void {
-    this.prov = this.provCur = i;
+    this.prov = i;
+    this.highlight(i);
     const p = providers[i];
     const fields = p.fields.map(f => ({ ...f }));
     if (matchProvider(this.cfg.storage) === i && this.cfg.storage.backend)
@@ -739,7 +822,12 @@ export class SetupModel {
       case 'storage':
       case 'schedule':
       case 'permaChoice':
+      case 's3Choice':
+      case 'keyChoice':
         hints = [h('enter', 'next'), h('↑↓', 'choose'), h('esc', 'back'), quit];
+        break;
+      case 'keyManual':
+        hints = [h('enter', 'connect'), h('o', 'show file'), h('esc', 'back')];
         break;
       case 'details':
         hints = [h('enter', this.details.focus === this.details.fields.length - 1 ? 'connect' : 'next')];
@@ -849,8 +937,37 @@ export class SetupModel {
       case 'storage':
         return {
           question: 'Where should backups go?',
-          sub: 'Choose your storage provider below.',
-          body: providers.map((p, i) => choice(i === this.provCur, p.name, p.note ?? '', 21, cw)),
+          sub: 'Choose your storage below.',
+          body: choices.map((c, i) => choice(i === this.provCur, c.name, c.note, 21, cw)),
+        };
+
+      case 's3Choice':
+        return {
+          over: choices[this.provCur].name,
+          question: 'Which S3 service?',
+          body: choices[this.provCur].providers.map((p, i) =>
+            choice(i === this.s3Cur, providers[p].name, providers[p].note ?? '', 21, cw),
+          ),
+        };
+
+      case 'keyChoice':
+        return {
+          over: providers[selfHosted].name,
+          question: `Add frost's SSH key to ${this.pending.sftp.host}.`,
+          sub: 'frost logs in with its own key, so scheduled backups never need a password.',
+          body: [
+            choice(this.keyCur === 0, 'Add it for me', 'needs your password once', 21, cw),
+            choice(this.keyCur === 1, "I'll add it myself", 'shows where the key is', 21, cw),
+          ],
+        };
+
+      case 'keyManual':
+        return {
+          over: providers[selfHosted].name,
+          question: "Add frost's key to the server.",
+          sub: `Add the line in this file to ~/.ssh/authorized_keys on ${this.pending.sftp.host}, then press [enter].`,
+          body: [inputBox({ value: this.deps.keyFile?.() ?? '' }, false, false, cw)],
+          help: projectLink + '/help/storage/self-hosted shows how.',
         };
 
       case 'details': {

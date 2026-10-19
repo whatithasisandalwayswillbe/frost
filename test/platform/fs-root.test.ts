@@ -140,3 +140,58 @@ test(
     assert.equal(fs.readFileSync(path.join(destination, 'child', 'sentinel'), 'utf8'), 'unchanged');
   },
 );
+
+test('native folders list entries, rename without replacing, link and report space', async t => {
+  const base = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'frost-entries-'));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const root = await openRoot(base);
+  const sub = root.openDirectory('sub', { create: true });
+  t.after(() => {
+    sub.close();
+    root.close();
+  });
+  for (const [name, text] of [
+    ['a', 'one'],
+    ['b', 'two'],
+  ]) {
+    const file = root.open(name, { write: true, create: true, exclusive: true });
+    file.writeFile(text);
+    file.close();
+  }
+  let linked = false;
+  try {
+    fs.symlinkSync(path.join(base, 'a'), path.join(base, 'l'));
+    linked = true;
+  } catch {
+    /* Creating symlinks needs a privilege on Windows. */
+  }
+
+  const expected = [
+    { name: 'a', kind: 'file' },
+    { name: 'b', kind: 'file' },
+    ...(linked ? [{ name: 'l', kind: 'link' }] : []),
+    { name: 'sub', kind: 'directory' },
+  ];
+  const sorted = () => root.list().sort((x, y) => x.name.localeCompare(y.name));
+  assert.deepEqual(sorted(), expected);
+  // A second listing starts from the beginning again.
+  assert.deepEqual(sorted(), expected);
+  assert.deepEqual(sub.list(), []);
+
+  assert.throws(() => root.rename('a', root, 'b', false), { code: 'EEXIST' });
+  assert.equal(fs.readFileSync(path.join(base, 'b'), 'utf8'), 'two');
+  root.rename('a', sub, 'moved', false);
+  assert.equal(fs.readFileSync(path.join(base, 'sub', 'moved'), 'utf8'), 'one');
+
+  root.link('b', sub, 'hard');
+  assert.throws(() => root.link('b', sub, 'hard'), { code: 'EEXIST' });
+  assert.equal(root.lstat('b').nlink, 2);
+  root.rename('b', sub, 'moved');
+  assert.equal(fs.readFileSync(path.join(base, 'sub', 'moved'), 'utf8'), 'two');
+
+  const space = root.space();
+  const stats = fs.statfsSync(base);
+  assert.equal(space.total, stats.blocks * stats.bsize);
+  assert.ok(space.free > 0 && space.free <= space.total && space.available <= space.free);
+  assert.equal(space.readOnly, false);
+});

@@ -39,6 +39,9 @@ function fixtureModel(f: any): BrowserModel {
         insecure: c.Storage.S3.Insecure,
       },
       permafrost: { url: c.Storage.Permafrost.URL, token: c.Storage.Permafrost.Token },
+      // The captures predate self-hosted and local drive storage, which the browser doesn't show either.
+      sftp: { host: '', port: 0, path: 'frost' },
+      local: { path: '' },
     },
   };
 

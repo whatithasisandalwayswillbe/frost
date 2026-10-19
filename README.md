@@ -4,7 +4,7 @@
 
 <h3 align="center">frost</h3>
 
-<p align="center">Encrypted, incremental backups to storage you choose.</p>
+<p align="center">Encrypted, incremental backups to storage you control.</p>
 
 <p align="center">
   <a href="https://getfro.st">Website</a> ·
@@ -23,7 +23,7 @@
 
 ---
 
-frost backs up your folders to S3-compatible storage or [Permafrost](docs/PERMAFROST.md), and encrypts everything on your machine before it's uploaded. Releases include their runtime, so you don't need to install Node.js. Backups run from your OS scheduler, and `frost browse` opens your snapshots in the terminal.
+frost backs up your folders to your own server over SSH, a local drive, S3-compatible storage or [Permafrost](docs/PERMAFROST.md), and encrypts everything on your machine before it's stored. Releases include their runtime, so you don't need to install Node.js. Backups run from your OS scheduler, and `frost browse` opens your snapshots in the terminal.
 
 ## Install
 
@@ -66,7 +66,7 @@ Contributions are welcome. Small fixes can go straight to a pull request, and an
 | Doc | Covers |
 |---|---|
 | [Architecture](docs/ARCHITECTURE.md) | The source layout, backup and restore, and the repository format |
-| [Security](docs/SECURITY.md) | The encryption model and what a storage provider can see |
+| [Security](docs/SECURITY.md) | The encryption model and what your storage can see |
 | [Permafrost API](docs/PERMAFROST.md) | The storage protocol, for anyone running a compatible server |
 | [Changelog](docs/CHANGELOG.md) | What changed in each release |
 

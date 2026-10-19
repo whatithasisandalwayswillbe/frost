@@ -10,7 +10,7 @@ import { runBrowser as browser, RestoreStopped } from '../tui/browser.js';
 import { setup } from '../tui/setup.js';
 import { loadState } from '../platform/update.js';
 import { Context } from './context.js';
-import { connect, unlock } from './connect.js';
+import { connect, installKey, keyFileShown, unlock } from './connect.js';
 import { finishSetup, setUp } from './init.js';
 import { loadKnown } from './known.js';
 import { updateStatePath, updateSummary } from './update.js';
@@ -62,7 +62,7 @@ export async function runSetup(ctx: Context, cfg: config.Config, existing: boole
   const result = await setup(
     {
       localKey: local,
-      connect: async (s, signal) => (await connect(ctx, s, local, signal)).state,
+      connect: async (s, signal, options) => (await connect(ctx, s, local, signal, options)).state,
       newKey: ctx.hooks.newKey,
       unlock: (s, phrase, signal) => unlock(ctx, s, phrase, signal),
       finish: (cfg, key, newRepo, signal) => finishSetup(ctx, cfg, key as Key, newRepo, signal),
@@ -84,6 +84,9 @@ export async function runSetup(ctx: Context, cfg: config.Config, existing: boole
         }
       },
       openBrowser: url => void ctx.hooks.openBrowser(url).catch(() => {}),
+      addKey: s => installKey(ctx, s),
+      keyFile: keyFileShown,
+      reveal: file => void ctx.hooks.reveal(config.expand(file)).catch(() => {}),
       addPath: async (typed, paths) => {
         const result = await config.addPath(typed, paths);
         return { clean: result.path, inside: result.inside };

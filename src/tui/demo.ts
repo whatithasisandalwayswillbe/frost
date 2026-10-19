@@ -14,7 +14,7 @@ import { Repo, chunkKey, marshal } from '../core/repo.js';
 import { errNotFound, errExists, type Backend } from '../core/storage.js';
 import { Engine } from '../engine/index.js';
 import { runBrowser } from './browser.js';
-import { setup, RepoState, type SetupDeps } from './setup.js';
+import { setup, ConnectError, RepoState, type SetupDeps } from './setup.js';
 
 // A made-up host name for the demo snapshots, so the real machine's name never shows.
 export const demoHost = 'John Doe';
@@ -174,13 +174,22 @@ export async function breakThings(engine: Engine, memory: MemoryBackend): Promis
 // access key is 'demo', and nothing is saved.
 function demoSetupDeps(latency: number): SetupDeps {
   const wait = (signal?: AbortSignal) => delay(Math.max(latency, 600), undefined, { signal });
+  // A self-hosted server refuses frost's SSH key until one of the ways of adding it has run.
+  let keyAdded = false;
   return {
-    connect: async (storage, signal) => {
+    connect: async (storage, signal, options) => {
       await wait(signal);
       if (storage.backend === 'permafrost' && storage.permafrost.token !== 'demo')
         throw new Error("that access key wasn't accepted, check you copied all of it (the demo key is: demo)");
+      if (storage.backend === 'sftp' && !keyAdded && !options?.acceptNewHostKey)
+        throw new ConnectError('login', storage.sftp.host + " didn't accept frost's SSH key.");
       return RepoState.New;
     },
+    addKey: async () => {
+      keyAdded = true;
+    },
+    keyFile: () => '~/.config/frost/ssh/frost_ed25519.pub',
+    reveal: () => {},
     newKey: () => Key.new(),
     unlock: async (_storage, phrase, signal) => {
       await wait(signal);

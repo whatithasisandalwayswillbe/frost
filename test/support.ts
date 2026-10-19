@@ -1,5 +1,6 @@
-// Helpers shared by the tests: an in-memory backend with hooks and counters, a fixture that builds a
-// repository, manifest and engine in a private temporary folder, and seeded random data.
+// Helpers shared by the tests: an in-memory backend with hooks and counters, the checks every storage backend
+// must pass, a fixture that builds a repository, manifest and engine in a private temporary folder, and seeded
+// random data.
 
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,6 +11,7 @@ import { Manifest } from '../src/core/manifest.js';
 import { errExists, errNotFound, type Backend } from '../src/core/storage.js';
 import { Engine } from '../src/engine/index.js';
 import type { TestContext } from 'node:test';
+import assert from 'node:assert/strict';
 
 // An in-memory backend. `beforePut` and `beforeGet` let tests delay or fail single objects,
 // `lists` counts only chunk listings (one per full chunk sync), and `place` is the storage location
@@ -29,6 +31,12 @@ export class Memory implements Backend {
 
   location(): string {
     return this.place;
+  }
+
+  // The storage behind the location, like a drive. Empty means the backend doesn't report one.
+  identityValue = '';
+  async identity(): Promise<string> {
+    return this.identityValue;
   }
 
   async put(key: string, data: Buffer, signal?: AbortSignal) {
@@ -67,6 +75,38 @@ export class Memory implements Backend {
   async delete(key: string) {
     this.objects.delete(key);
   }
+}
+
+// Checks what every backend must do. Conditional creation has exactly one winner, missing objects
+// give errNotFound, owned downloads are independent, listing filters by prefix and deletes repeat safely.
+export async function conformance(backend: Backend): Promise<void> {
+  await backend.putNew('conditional', Buffer.from('first'));
+  await assert.rejects(backend.putNew('conditional', Buffer.from('second')), error => error === errExists);
+  assert.equal((await backend.get('conditional')).toString(), 'first');
+  await backend.delete('conditional');
+
+  const creations = await Promise.allSettled(
+    Array.from({ length: 8 }, (_, i) => backend.putNew('concurrent-create', Buffer.from('writer ' + i))),
+  );
+  assert.equal(creations.filter(result => result.status === 'fulfilled').length, 1);
+  await backend.delete('concurrent-create');
+  await assert.rejects(backend.get('missing/key'), error => error === errNotFound);
+
+  for (const name of ['chunks/ab/ab01', 'chunks/ab/ab02', 'chunks/cd/cd01', 'snapshots/one'])
+    await backend.put(name, Buffer.from('encrypted bytes\0\x01\x02'));
+
+  // Wiping an owned buffer mustn't affect the next download of the same object.
+  if (backend.getOwned) {
+    const owned = await backend.getOwned('chunks/ab/ab01');
+    owned.fill(0);
+    assert.equal((await backend.getOwned('chunks/ab/ab01')).toString(), 'encrypted bytes\0\x01\x02');
+  }
+
+  assert.deepEqual((await backend.list('chunks/')).sort(), ['chunks/ab/ab01', 'chunks/ab/ab02', 'chunks/cd/cd01']);
+  await backend.delete('chunks/ab/ab02');
+  await backend.delete('chunks/ab/ab02');
+  await assert.rejects(backend.get('chunks/ab/ab02'), error => error === errNotFound);
+  assert.equal((await backend.list('')).length, 3);
 }
 
 // Builds a fresh repository with a fixed all-zero key, plus a manifest and engine. `write` creates

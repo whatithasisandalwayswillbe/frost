@@ -1,20 +1,25 @@
 // Storage clients for encrypted backup objects and setup probes. This file holds the backend
-// contract, the shared HTTP transport and the S3 and Permafrost clients.
+// contract, the shared HTTP transport and the S3 and Permafrost clients. The self-hosted clients
+// are in sftp.ts, for a server reached over SSH, and local.ts, for a folder on a drive.
 
 import { createHash, createHmac } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { setTimeout as delay } from 'node:timers/promises';
 import { isIP } from 'node:net';
-import type { Storage } from './config.js';
+import { backends, sshKeyPath, type Storage } from './config.js';
+import { LocalBackend } from './local.js';
+import { SFTPBackend } from './sftp.js';
 
 export const errNotFound = new Error('object not found');
 export const errExists = new Error('object already exists');
 export const errConditionalUnsupported = new Error(
   'storage must support conditional object creation (If-None-Match: *)',
 );
-// The largest sealed object: 256 MiB of plaintext plus room for the seal.
-const maxObjectSize = (256 << 20) + 64;
+// The largest sealed object: 256 MiB of plaintext plus room for the seal. A sealed chunk is at most 8 MiB
+// plus that room.
+export const maxObjectSize = (256 << 20) + 64;
+export const maxChunkSize = (8 << 20) + 64;
 export const defaultPermafrostURL = 'https://permafrost.wihiaawb.com';
 export const defaultPermafrostHost = new URL(defaultPermafrostURL).host;
 // Where people get a key for the default server. Setup opens it, and the key is pasted back in.
@@ -43,7 +48,9 @@ export function newBackend(storage: Storage): Backend {
   if (storage.backend === 's3') return new S3Backend(storage.s3);
   if (storage.backend === 'permafrost')
     return new PermafrostBackend(storage.permafrost.url || defaultPermafrostURL, storage.permafrost.token);
-  throw new Error(`unknown storage.backend ${JSON.stringify(storage.backend)} (s3 or permafrost)`);
+  if (storage.backend === 'sftp') return new SFTPBackend(storage.sftp, { identity: sshKeyPath() });
+  if (storage.backend === 'local') return new LocalBackend(storage.local);
+  throw new Error(`unknown storage.backend ${JSON.stringify(storage.backend)} (${backends})`);
 }
 
 // The storage contract. putNew creates an absent key atomically or throws errExists, get throws
@@ -63,6 +70,26 @@ export interface Backend {
   // Identifies the complete destination. Backup only trusts the manifest's chunk list at the
   // location where it was checked.
   location?(): string;
+  // Identifies the storage behind the location, such as the drive mounted at a path, for storage where
+  // two copies of one repository can take turns at the same location.
+  identity?(signal?: AbortSignal): Promise<string>;
+  // Creates the storage's top folder when it's missing but its parent exists. Only setup calls it, so a
+  // drive that isn't connected never becomes a new repository on whatever is mounted in its place.
+  prepare?(signal?: AbortSignal): Promise<void>;
+  // Ends connections the backend keeps open. Idle connections don't keep the process alive anyway.
+  close?(): Promise<void>;
+}
+
+// The storage's top folder is missing, like a drive that isn't connected or a server folder that's gone.
+// Its code lets scheduled backups wait for it a little while, the way they wait for the network.
+export class MissingRootError extends Error {
+  readonly code = 'ENOMEDIUM';
+}
+
+// A folder whose filesystem can't create a file only when its name is free, which conditional creates need.
+// The storage fails closed rather than risk two machines overwriting each other's metadata.
+export class UnsafeFolderError extends Error {
+  readonly code = 'ENOTSUP';
 }
 
 // An account's storage use. quota is 0 when there's no limit. message is the server's own text for the
@@ -80,6 +107,26 @@ export function location(backend: Backend): string {
 
 export function hash(data: Uint8Array | string): string {
   return createHash('sha256').update(data).digest('hex');
+}
+
+// Settles a promise early when the signal aborts. The work itself carries on.
+export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(
+      value => {
+        signal.removeEventListener('abort', abort);
+        resolve(value);
+      },
+      error => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      },
+    );
+  });
 }
 
 // Object keys frost writes use lowercase letters, digits, `.`, `_`, `-` and `/`, with no empty,
@@ -688,7 +735,7 @@ export class S3Backend implements Backend {
         this.#url(this.#prefix + key),
         undefined,
         {},
-        key.startsWith('chunks/') ? (8 << 20) + 64 : maxObjectSize,
+        key.startsWith('chunks/') ? maxChunkSize : maxObjectSize,
         signal,
       )
     ).body;

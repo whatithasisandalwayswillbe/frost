@@ -17,7 +17,7 @@ frost runs as a TypeScript application on its bundled Node.js runtime. It has no
 | `install/` | The shell and PowerShell installers, the npm package's installer, the installer and launcher every package carries, and the release public key |
 | `scripts/` | The manual release script |
 
-`cli` connects the components. `engine` builds on `core/repo`, `core/manifest` and `core/chunker`. The repository seals objects through `core/crypto`; storage clients only handle bytes. The only runtime npm dependency is the pure JavaScript TOML parser. Node supplies HTTP, cryptography, zstd and worker threads.
+`cli` connects the components. `engine` builds on `core/repo`, `core/manifest` and `core/chunker`. The repository seals objects through `core/crypto`; storage clients only handle bytes. The only runtime npm dependency is the pure JavaScript TOML parser. Node supplies HTTP, cryptography, zstd and worker threads, and self-hosted storage runs the system's OpenSSH client.
 
 ## Keys
 
@@ -74,13 +74,13 @@ The repository layout version is `2`; the sealed blob version is `1`.
 | `snapshots/<id>` | Time, host, paths, stats, missing folders and capped warning lists |
 | `trees/<id>` | Ordered file-list chunk IDs and the list's total length |
 
-Every object is sealed as `version(1) | nonce(24) | ciphertext`. The object's storage key is AEAD associated data. The backend's S3 folder prefix isn't part of that key, so a whole repository can move between folders. Renaming an object inside the repository breaks authentication.
+Every object is sealed as `version(1) | nonce(24) | ciphertext`. The object's storage key is AEAD associated data. The folder that holds the repository, whether an S3 prefix, a folder on an SSH server or a folder on a drive, isn't part of that key, so a whole repository can move between folders and kinds of storage. Renaming an object inside the repository breaks authentication.
 
 Headers stay small, so the browser and `status` can list snapshots without loading trees. File lists are stored as chunks and deduplicated like file data. The tree index authenticates their order and total size. A future prune must count file-list chunks as referenced.
 
 `frost.repo`, trees and headers use conditional creates (`If-None-Match: *`). Concurrent clients can't overwrite repository metadata. Snapshot IDs contain two BIP39 words and 42 random bits in hex, 64 random bits in total.
 
-Decompressed objects are capped at 256 MiB. Chunk downloads are capped at 8 MiB plus encryption overhead; S3 metadata allows the larger object limit. Permafrost keeps its 16 MiB response limit. Header warning lists hold at most 100 entries while preserving full counts.
+Decompressed objects are capped at 256 MiB. Chunk downloads are capped at 8 MiB plus encryption overhead; S3, SFTP and local drive metadata allow the larger object limit. Permafrost keeps its 16 MiB response limit. Header warning lists hold at most 100 entries while preserving full counts.
 
 ## Manifest
 
@@ -90,7 +90,7 @@ Opening the journal discards an incomplete final line. A damaged complete transa
 
 A persistent `.lock` file is locked by the operating system for the manifest's lifetime. Marker contents don't establish ownership. Locks release when the handle closes or the process exits; unavailable kernel locking fails closed. Separate cache folders and other machines have separate locks, so repository metadata still needs conditional creates.
 
-The chunk list is refreshed when it's empty, more than seven days old, checked at a different storage location, or invalidated by a missing chunk. The location includes the provider's endpoint, bucket and folder, or the Permafrost server and account. `status --verify` always refreshes it. A future prune must force every machine to sync before its next backup.
+The chunk list is refreshed when it's empty, more than seven days old, checked at a different storage location, or invalidated by a missing chunk. The location includes the S3 endpoint, bucket and folder, the Permafrost server and account, the SSH server and folder, or the drive folder. A local drive also adds the folder's device and inode, so a copy of the repository on another drive mounted at the same path counts as another location. Most drives get a new device number when they're plugged in again, which costs a listing and nothing else. `status --verify` always refreshes it. A future prune must force every machine to sync before its next backup.
 
 Losing the manifest costs a storage listing and a full source-file read. Restore works without it. `storage-<config>.json` separately records the last repository location without credentials so errors can identify a changed setting.
 
@@ -106,7 +106,7 @@ Partial files must have one hardlink. A matching destination with multiple hardl
 
 ### Native filesystem operations
 
-`src/platform/fs-root*` opens and retains directory handles. Subsequent opens, renames, removals, metadata operations and locks resolve relative to those handles. Restore rejects traversal, duplicate destinations (compared without case on Windows and macOS, and without Unicode normalisation on macOS), linked parents, Windows devices and alternate data streams. There is no ordinary path-based fallback when a native binding or lock is unavailable.
+`src/platform/fs-root*` opens and retains directory handles. Subsequent opens, renames, removals, metadata operations and locks resolve relative to those handles. Restore rejects traversal, duplicate destinations (compared without case on Windows and macOS, and without Unicode normalisation on macOS), linked parents, Windows devices and alternate data streams. There is no ordinary path-based fallback when a native binding or lock is unavailable. Local drive storage uses the same handles, plus folder listing, a rename that refuses an existing name, hard links and free space, which are bound on first use.
 
 The bindings use Node's built-in native-call API and fixed signatures for known OS libraries. POSIX uses directory-relative system calls; Windows uses native file handles and no-follow opens. Native metadata preserves nanosecond timestamps, with Windows' 100 ns resolution.
 
@@ -195,11 +195,26 @@ interface Backend {
   getOwned?(key: string, signal?: AbortSignal): Promise<Buffer>;
   list(prefix: string, signal?: AbortSignal): Promise<string[]>;
   delete(key: string, signal?: AbortSignal): Promise<void>;
+  usage?(signal?: AbortSignal): Promise<Usage>;
   toString(): string;
   location?(): string;
+  identity?(signal?: AbortSignal): Promise<string>;
+  prepare?(signal?: AbortSignal): Promise<void>;
+  close?(): Promise<void>;
 }
 ```
 
-`putNew` atomically creates an absent key and throws `errExists` otherwise. A missing `get` throws `errNotFound`; deleting an absent key succeeds. `getOwned` is optional and must return a fresh exclusive buffer that frost may erase or detach. Without it, frost preserves the backend's returned buffer. `location` identifies the complete storage destination; otherwise `toString` serves that purpose.
+`putNew` atomically creates an absent key and throws `errExists` otherwise. A missing `get` throws `errNotFound`; deleting an absent key succeeds. `getOwned` is optional and must return a fresh exclusive buffer that frost may erase or detach. Without it, frost preserves the backend's returned buffer. `location` identifies the complete storage destination; otherwise `toString` serves that purpose. `identity` names the storage behind a location for manifest trust, `prepare` creates a missing top folder during setup only, and `close` ends kept connections. Construction does no I/O.
 
-Every backend must pass the conformance cases in `test/core/storage.test.ts`, including concurrent conditional creates and owned-buffer isolation. S3 uses SigV4 and an in-process fake service. Permafrost uses the reference contract in [PERMAFROST.md](PERMAFROST.md). Production requests have response limits, cancellation and bounded retries.
+| Backend | File | Transport |
+|---|---|---|
+| `s3` | `src/core/storage.ts` | HTTPS with SigV4, path-style URLs |
+| `permafrost` | `src/core/storage.ts` | HTTPS with a bearer token, as [PERMAFROST.md](PERMAFROST.md) describes |
+| `sftp` | `src/core/sftp.ts` | The system `ssh` with the `sftp` subsystem, speaking an SFTP version 3 subset over its pipes |
+| `local` | `src/core/local.ts` | The native filesystem handles, called on a worker thread from `src/core/local-worker.ts` |
+
+`sftp` and `local` store each object as a file named by its key under one folder, the same layout as an S3 prefix. They write a temporary file whose name starts with `~`, which no valid key contains, so listings skip it, then move it into place. `put` replaces the object with one rename, except over SFTP without `posix-rename@openssh.com`, where the old copy goes first. `putNew` links the temporary file to the key, through `hardlink@openssh.com` over SFTP, or a rename that refuses an existing name (`renameat2` with `RENAME_NOREPLACE`, `renameatx_np` with `RENAME_EXCL`, or `FileRenameInformation` without replace) on a drive, falling back to a hard link. Storage that can't do either fails closed with `UnsafeFolderError`. A missing top folder throws `MissingRootError`, whose `ENOMEDIUM` code lets scheduled runs wait for it.
+
+`sftp` logs in only with frost's own key from `src/core/sshkey.ts`, with `BatchMode`, no agent and no forwarding, and the host after `--`. One ssh process serves each backend, with pipelined requests and up to four attempts across dropped connections. It's unreferenced while idle, so it never keeps a command running. Failures are classified from ssh's exit and messages, and network ones carry Node's error codes.
+
+Every backend must pass `conformance` in `test/support.ts`, including concurrent conditional creates and owned-buffer isolation. S3 uses SigV4 and an in-process fake service. Permafrost uses the reference contract in [PERMAFROST.md](PERMAFROST.md). SFTP uses an in-process server that follows OpenSSH, and OpenSSH's own `sftp-server` when it's installed. Local drive storage runs against private temporary folders, with racing creates on separate threads. Production requests have response limits, cancellation and bounded retries.

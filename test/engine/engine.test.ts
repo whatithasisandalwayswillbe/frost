@@ -164,6 +164,13 @@ test('weekly sync is bound to location and missing chunks are repaired', async t
   assert.equal(f.memory.lists, 3);
   await f.engine.verify(5, true);
   assert.equal(f.memory.lists, 4);
+
+  // Another drive mounted at the same location is somewhere else too.
+  f.memory.identityValue = 'drive-b';
+  await f.engine.backup({ paths: [f.src] });
+  assert.equal(f.memory.lists, 5);
+  await f.engine.backup({ paths: [f.src] });
+  assert.equal(f.memory.lists, 5);
 });
 
 test('verification is due when its saved time is invalid or outside the daily window', async t => {

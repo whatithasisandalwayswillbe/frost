@@ -6,14 +6,16 @@ import * as config from '../core/config.js';
 import { Key } from '../core/crypto.js';
 import { Repo } from '../core/repo.js';
 import { location, permafrostKeyPage, type Backend } from '../core/storage.js';
-import { RepoState } from '../tui/setup.js';
+import { ConnectError, RepoState } from '../tui/setup.js';
+import { checkAddress, checkDrivePath, joinAddress, splitAddress } from '../tui/providers.js';
 import { Excluder } from '../engine/exclude.js';
 import { Context, errNoKey } from './context.js';
-import { connect, explainConnect, opensRepo, phraseKey } from './connect.js';
+import { connect, explainConnect, installKey, keyFileShown, opensRepo, phraseKey } from './connect.js';
 import { Prompter } from './prompt.js';
 import { phraseGrid } from './key.js';
 import { loadKnown, rememberChecked } from './known.js';
 import { syncJob } from './sync.js';
+import { authorizedLine } from '../core/sshkey.js';
 import { printable, tildify } from './format.js';
 
 // The closing line after a successful setup.
@@ -77,23 +79,52 @@ function missingDirs(paths: string[]): string[] {
   });
 }
 
+// Asks until the answer passes check, which returns a problem to show or ''.
+async function askChecked(ctx: Context, p: Prompter, q: string, def: string, check: (v: string) => string) {
+  for (;;) {
+    const v = (await p.required(q, def)).trim();
+    const problem = check(v);
+    if (!problem) return v;
+    p.line(ctx.fmt.dim('  ' + problem));
+  }
+}
+
 // Asks where backups go and fills in that storage's settings. Without a key for the default Permafrost
 // server, it opens the key page so the user can get one and paste it.
 async function askStorage(ctx: Context, p: Prompter, cfg: config.Config): Promise<void> {
   const f = ctx.fmt;
   const options = [
     'Permafrost ' + f.dim('(one access key, nothing else to set up)'),
-    'S3-compatible bucket ' + f.dim('(AWS, Backblaze B2, Cloudflare R2, Wasabi, MinIO, ...)'),
+    'S3-compatible bucket ' + f.dim('(AWS, Backblaze B2, Cloudflare R2, Wasabi, Ceph, ...)'),
+    'Self-hosted ' + f.dim('(your server over SSH)'),
+    'Local drive ' + f.dim('(USB or internal disk)'),
   ];
-  const i = await p.choose(
-    f.bold('Where should backups go?'),
-    options,
-    cfg.storage.backend === 'permafrost' ? 0 : cfg.storage.backend === 's3' ? 1 : -1,
-  );
+  const kinds = ['permafrost', 's3', 'sftp', 'local'];
+  const i = await p.choose(f.bold('Where should backups go?'), options, kinds.indexOf(cfg.storage.backend));
   const s = cfg.storage;
 
-  // 0 is Permafrost and 1 is S3.
-  if (!i) {
+  // The answers follow kinds: 0 is Permafrost, 1 is S3, 2 is a server over SSH and 3 is a drive.
+  if (i === 2) {
+    s.backend = 'sftp';
+    const address = await askChecked(
+      ctx,
+      p,
+      '  Server (an SSH address, like me@nas.local)',
+      joinAddress(s.sftp.host, s.sftp.port),
+      checkAddress,
+    );
+    Object.assign(s.sftp, splitAddress(address));
+    s.sftp.path = (await p.ask('  Folder on the server', s.sftp.path || 'frost')).trim() || 'frost';
+  } else if (i === 3) {
+    s.backend = 'local';
+    s.local.path = await askChecked(
+      ctx,
+      p,
+      '  Folder (a full path on a connected drive)',
+      s.local.path,
+      checkDrivePath,
+    );
+  } else if (!i) {
     s.backend = 'permafrost';
     if (
       !s.permafrost.token &&
@@ -113,7 +144,7 @@ async function askStorage(ctx: Context, p: Prompter, cfg: config.Config): Promis
   } else {
     s.backend = 's3';
     s.s3.endpoint = await p.required('  Endpoint (e.g. s3.us-east-1.amazonaws.com)', s.s3.endpoint);
-    s.s3.region = await p.ask("  Region (blank if your provider doesn't use one)", s.s3.region);
+    s.s3.region = await p.ask("  Region (blank if your server or provider doesn't use one)", s.s3.region);
     s.s3.bucket = await p.required('  Bucket', s.s3.bucket);
     s.s3.prefix = (await p.ask('  Folder inside the bucket (/ for the top level)', s.s3.prefix)).replace(
       /^\/+|\/+$/g,
@@ -122,6 +153,31 @@ async function askStorage(ctx: Context, p: Prompter, cfg: config.Config): Promis
     s.s3.access_key_id = await p.required('  Access key ID', s.s3.access_key_id);
     s.s3.secret_access_key = await p.secret('  Secret access key', s.s3.secret_access_key);
   }
+}
+
+// frost's SSH key isn't on the server yet. ssh can add it after asking for the password, or the person adds
+// the line by hand. Returns the connection options for the next try: a key added by hand may come with a
+// server this computer hasn't seen, so its host key is trusted the first time.
+async function addKey(ctx: Context, p: Prompter, s: config.Storage): Promise<{ acceptNewHostKey: boolean }> {
+  const f = ctx.fmt;
+  const way = await p.choose(
+    "frost's SSH key isn't on " + printable(s.sftp.host) + ' yet.',
+    ['Add it for me ' + f.dim('(needs your password once)'), "I'll add it myself"],
+    0,
+  );
+  if (!way) {
+    try {
+      await installKey(ctx, s);
+    } catch (err) {
+      p.fail(f.caution("the key wasn't added: " + f.errorText(err)));
+    }
+    return { acceptNewHostKey: false };
+  }
+  p.line('  Add this line to ~/.ssh/authorized_keys on ' + printable(s.sftp.host) + ':');
+  p.line('  ' + f.bold(printable(authorizedLine(await ctx.hooks.sshKey()))));
+  p.line(f.dim("  It's also in " + printable(keyFileShown()) + '.'));
+  await p.ask(f.dim("Press enter once it's there."));
+  return { acceptNewHostKey: true };
 }
 
 // Three tries at the recovery phrase for backups that are already in the storage.
@@ -149,7 +205,7 @@ async function showNewPhrase(ctx: Context, p: Prompter, key: Key): Promise<void>
   p.gap();
   p.line(f.bold('Write these 24 words down and keep them somewhere safe.'));
   p.line("They're the only way to restore your files if this machine is lost.");
-  p.line('Nobody can recover them for you: not your storage provider, not us.');
+  p.line('Nobody can recover them for you: not whoever stores your backups, not us.');
   p.gap();
 
   const words = key.phrase().split(' ');
@@ -248,17 +304,23 @@ export async function runInit(ctx: Context): Promise<void> {
   if (existing) p.line(f.dim('Existing config found. Press enter to keep a value.'));
   p.gap();
 
-  // Ask for storage until it connects.
-  let connected: { backend: Backend; state: RepoState };
-  for (;;) {
-    await askStorage(ctx, p, cfg);
+  // Ask for storage until it connects. A self-hosted server that won't take frost's key yet gets the key
+  // added, and is tried again without asking for its settings.
+  let connected: { backend: Backend; state: RepoState } | undefined;
+  let options: { acceptNewHostKey?: boolean } | undefined;
+  while (!connected) {
+    if (!options) await askStorage(ctx, p, cfg);
     p.question(f.dim('Connecting ...'));
     try {
-      connected = await connect(ctx, cfg.storage, local);
+      connected = await connect(ctx, cfg.storage, local, ctx.signal, options);
       f.write(f.good('ok') + '\n');
-      break;
     } catch (err) {
       f.write(f.error('failed') + '\n');
+      if (err instanceof ConnectError && err.about === 'login' && cfg.storage.backend === 'sftp' && !options) {
+        options = await addKey(ctx, p, cfg.storage);
+        continue;
+      }
+      options = undefined;
       p.fail(f.caution(f.errorText(err)));
       p.gap();
     }
@@ -328,7 +390,7 @@ export async function runInit(ctx: Context): Promise<void> {
     }
 
   config.validate(cfg);
-  const { key, newRepo } = await promptKey(ctx, p, connected!.backend, connected!.state, local);
+  const { key, newRepo } = await promptKey(ctx, p, connected.backend, connected.state, local);
   const rows = await finishSetup(ctx, cfg, key, newRepo);
   p.gap();
   rows.forEach(([label, value]) => p.row(label, value));

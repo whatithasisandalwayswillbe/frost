@@ -1,8 +1,11 @@
-// These are the storage providers the setup wizard offers. Each one lists the questions setup
-// asks, and converts the answers to and from the storage section of the config.
+// These are the kinds of storage the setup wizard offers. Each provider lists the questions setup asks, and
+// converts the answers to and from the storage section of the config. choices groups them into the list setup
+// shows first, where S3-compatible opens a second list of S3 services.
 
+import path from 'node:path';
 import type { Storage } from './types.js';
 import type { Field } from './input.js';
+import { expand } from '../core/config.js';
 import { permafrostName } from '../core/storage.js';
 
 export const projectLink = 'getfro.st';
@@ -116,8 +119,48 @@ const access = (question: string, name: string, about: string, help: string, sec
 
 const readKeys = (s: Storage) => [s.s3.bucket, s.s3.access_key_id, s.s3.secret_access_key];
 
-// Setup treats index 0 as Permafrost. Other S3-compatible stays last because it matches any
-// S3 config, so the named providers have to be tried first.
+// Splits an SSH address into its host and port: me@nas.local:2222, me@[fe80::1]:2222, or a bare host or alias
+// with no port. An IPv6 address without brackets has no port.
+export function splitAddress(v: string): { host: string; port: number } {
+  const bracketed = /^(.*@)?\[([^\]]+)\](?::(\d+))?$/.exec(v);
+  if (bracketed) return { host: (bracketed[1] ?? '') + bracketed[2], port: Number(bracketed[3] ?? 0) };
+  const m = /^([^:]+):(\d+)$/.exec(v);
+  return m ? { host: m[1], port: Number(m[2]) } : { host: v, port: 0 };
+}
+
+// The address as setup shows it again, with the port when there is one.
+export function joinAddress(host: string, port: number): string {
+  if (!port) return host;
+  const at = host.lastIndexOf('@');
+  return host.slice(at + 1).includes(':')
+    ? host.slice(0, at + 1) + '[' + host.slice(at + 1) + ']:' + port
+    : host + ':' + port;
+}
+
+export function checkAddress(v: string): string {
+  const { host, port } = splitAddress(v);
+  if (/[ \t]/.test(v)) return 'The address has no spaces in it.';
+  if (host.startsWith('-') || !/^[A-Za-z0-9._%+:@-]+$/.test(host)) return 'Type a host, like me@nas.local or nas.';
+  if (port > 65535 || (port === 0 && /:0+$/.test(v))) return 'Ports go from 1 to 65535.';
+  return '';
+}
+
+const checkFolder = (v: string): string =>
+  /[\x00-\x1f]/.test(v) || v === '~' ? 'Type a folder, like frost or /srv/backups/frost.' : '';
+
+// The placeholder shows a drive path in this system's style.
+const drivePath =
+  process.platform === 'win32'
+    ? 'E:\\frost'
+    : process.platform === 'darwin'
+      ? '/Volumes/Backup/frost'
+      : '/mnt/backup/frost';
+
+export const checkDrivePath = (v: string): string =>
+  path.isAbsolute(expand(v)) ? '' : 'Type a full path, like ' + drivePath + '.';
+
+// Setup treats index 0 as Permafrost. Other S3-compatible comes after the named S3 services because it matches
+// any S3 config, so they have to be tried first.
 export const providers: Provider[] = [
   {
     name: 'Permafrost',
@@ -137,35 +180,6 @@ export const providers: Provider[] = [
       s.permafrost.token = v[0];
     },
     match: s => s.backend === 'permafrost',
-  },
-  {
-    name: 'Backblaze B2',
-    fields: [
-      {
-        question: "What's the bucket's endpoint?",
-        help: 'Buckets > your bucket > Endpoint. E.g. s3.us-west-004.backblazeb2.com.',
-        name: 'endpoint',
-        about: 'address',
-        check: checkB2Endpoint,
-      },
-      fBucket,
-      access(
-        "Paste the application key's keyID.",
-        'keyID',
-        'key',
-        'Application Keys > Add a New Application Key. Limit it to this bucket.',
-      ),
-      access(
-        'Paste the applicationKey.',
-        'applicationKey',
-        'secret',
-        'Shown once, right after you create the key.',
-        true,
-      ),
-    ],
-    read: s => [s.s3.endpoint, ...readKeys(s)],
-    apply: (v, s) => s3(s, v[0], regionFromEndpoint(v[0]), v[1], v[2], v[3]),
-    match: s => s.backend === 's3' && onDomain(s.s3.endpoint, 'backblazeb2.com'),
   },
   {
     name: 'Amazon S3',
@@ -195,6 +209,35 @@ export const providers: Provider[] = [
     read: s => [s.s3.region, ...readKeys(s)],
     apply: (v, s) => s3(s, 's3.' + v[0] + '.amazonaws.com', v[0], v[1], v[2], v[3]),
     match: s => s.backend === 's3' && onDomain(s.s3.endpoint, 'amazonaws.com'),
+  },
+  {
+    name: 'Backblaze B2',
+    fields: [
+      {
+        question: "What's the bucket's endpoint?",
+        help: 'Buckets > your bucket > Endpoint. E.g. s3.us-west-004.backblazeb2.com.',
+        name: 'endpoint',
+        about: 'address',
+        check: checkB2Endpoint,
+      },
+      fBucket,
+      access(
+        "Paste the application key's keyID.",
+        'keyID',
+        'key',
+        'Application Keys > Add a New Application Key. Limit it to this bucket.',
+      ),
+      access(
+        'Paste the applicationKey.',
+        'applicationKey',
+        'secret',
+        'Shown once, right after you create the key.',
+        true,
+      ),
+    ],
+    read: s => [s.s3.endpoint, ...readKeys(s)],
+    apply: (v, s) => s3(s, v[0], regionFromEndpoint(v[0]), v[1], v[2], v[3]),
+    match: s => s.backend === 's3' && onDomain(s.s3.endpoint, 'backblazeb2.com'),
   },
   {
     name: 'Cloudflare R2',
@@ -245,11 +288,11 @@ export const providers: Provider[] = [
   },
   {
     name: 'Other S3-compatible',
-    note: 'MinIO, Ceph',
+    note: 'Ceph, SeaweedFS',
     fields: [
       {
         question: "What's the S3 endpoint?",
-        help: "Your provider's docs list it. Use http:// only for local servers.",
+        help: "Your server's or provider's docs list it. Use http:// only for local servers.",
         name: 'endpoint',
         about: 'address',
         check: checkEndpoint,
@@ -258,22 +301,93 @@ export const providers: Provider[] = [
         question: 'Which region?',
         optional: true,
         placeholder: "leave blank if there isn't one",
-        help: 'Only if your provider asks for one.',
+        help: 'Only if your server or provider asks for one.',
         name: 'region',
         about: 'address',
         check: noSpaces('region'),
       },
       fBucket,
-      access('Paste the access key ID.', 'access key ID', 'key', "From your provider's console."),
-      access('Paste the secret access key.', 'secret access key', 'secret', "From your provider's console.", true),
+      access('Paste the access key ID.', 'access key ID', 'key', "From your server's or provider's console."),
+      access(
+        'Paste the secret access key.',
+        'secret access key',
+        'secret',
+        "From your server's or provider's console.",
+        true,
+      ),
     ],
     read: s => [s.s3.endpoint, s.s3.region, ...readKeys(s)],
     apply: (v, s) => s3(s, v[0], v[1], v[2], v[3], v[4]),
     match: s => s.backend === 's3',
   },
+  {
+    name: 'Self-hosted',
+    note: 'your server over SSH',
+    fields: [
+      {
+        question: "What's the server's SSH address?",
+        placeholder: 'like me@nas.local',
+        help: 'A user and host, or a Host from your SSH config. Add :2222 for another port.',
+        name: 'address',
+        about: 'address',
+        check: checkAddress,
+      },
+      {
+        question: 'Which folder on the server?',
+        value: 'frost',
+        help: 'In your home folder there, or a full path like /srv/backups/frost. frost creates the last folder.',
+        name: 'folder',
+        about: 'folder',
+        check: checkFolder,
+      },
+    ],
+    read: s => [joinAddress(s.sftp.host, s.sftp.port), s.sftp.path],
+    apply: (v, s) => {
+      const { host, port } = splitAddress(v[0]);
+      s.backend = 'sftp';
+      Object.assign(s.sftp, { host, port, path: v[1] });
+    },
+    match: s => s.backend === 'sftp',
+  },
+  {
+    name: 'Local drive',
+    note: 'USB or internal disk',
+    fields: [
+      {
+        question: 'Which folder should hold your backups?',
+        placeholder: 'like ' + drivePath,
+        help: "On a drive that's connected now. frost creates the last folder if it isn't there.",
+        name: 'folder',
+        about: 'folder',
+        check: checkDrivePath,
+      },
+    ],
+    read: s => [s.local.path],
+    apply: (v, s) => {
+      s.backend = 'local';
+      s.local.path = v[0];
+    },
+    match: s => s.backend === 'local',
+  },
 ];
 
-// Returns the index of the provider a config uses. Anything unrecognised counts as Permafrost.
+// The list setup shows first. Each choice holds the indexes of its providers; S3-compatible has several and
+// opens a second list.
+export const choices: { name: string; note: string; providers: number[] }[] = [
+  { name: 'Permafrost', note: 'recommended', providers: [0] },
+  { name: 'S3-compatible', note: 'AWS, B2, R2, Wasabi, Ceph', providers: [1, 2, 3, 4, 5] },
+  { name: 'Self-hosted', note: 'your server over SSH', providers: [6] },
+  { name: 'Local drive', note: 'USB or internal disk', providers: [7] },
+];
+
+// The choice a provider belongs to.
+export const choiceOf = (provider: number): number => choices.findIndex(c => c.providers.includes(provider));
+
+// The index of the Self-hosted provider, whose connections can need frost's SSH key added first.
+export const selfHosted = choices[2].providers[0];
+
+// Returns the index of the provider a config uses. A config without a backend, or with one setup doesn't
+// know, counts as Permafrost.
 export function matchProvider(s: Storage): number {
   return Math.max(
     providers.findIndex(p => p.match(s)),
@@ -284,7 +398,8 @@ export function matchProvider(s: Storage): number {
 // Describes where backups go in one line, for the review screen.
 export function describeStorage(s: Storage): string {
   const p = providers[matchProvider(s)];
-  return s.backend === 'permafrost'
-    ? permafrostName(s.permafrost.url)
-    : p.name + ', bucket ' + s.s3.bucket + (s.s3.prefix ? '/' + s.s3.prefix.replace(/^\/+|\/+$/g, '') : '');
+  if (s.backend === 'permafrost') return permafrostName(s.permafrost.url);
+  if (s.backend === 'sftp') return p.name + ', ' + joinAddress(s.sftp.host, s.sftp.port) + ', folder ' + s.sftp.path;
+  if (s.backend === 'local') return p.name + ', ' + s.local.path;
+  return p.name + ', bucket ' + s.s3.bucket + (s.s3.prefix ? '/' + s.s3.prefix.replace(/^\/+|\/+$/g, '') : '');
 }

@@ -14,12 +14,11 @@ import {
   readBounded,
   hash,
   signV4,
-  errExists,
-  errNotFound,
   errConditionalUnsupported,
   type Backend,
   type S3Config,
 } from '../../src/core/storage.js';
+import { conformance } from '../support.js';
 
 // Starts an HTTP server on a random loopback port and returns its base URL. Handler errors become
 // 500 responses, and the server closes when the test ends.
@@ -41,38 +40,6 @@ async function server(
   const address = service.address();
   if (!address || typeof address === 'string') throw new Error('missing address');
   return `http://127.0.0.1:${address.port}`;
-}
-
-// Checks what every backend must do. Conditional creation has exactly one winner, missing objects
-// give errNotFound, owned downloads are independent, listing filters by prefix and deletes repeat safely.
-async function conformance(backend: Backend): Promise<void> {
-  await backend.putNew('conditional', Buffer.from('first'));
-  await assert.rejects(backend.putNew('conditional', Buffer.from('second')), error => error === errExists);
-  assert.equal((await backend.get('conditional')).toString(), 'first');
-  await backend.delete('conditional');
-
-  const creations = await Promise.allSettled(
-    Array.from({ length: 8 }, (_, i) => backend.putNew('concurrent-create', Buffer.from('writer ' + i))),
-  );
-  assert.equal(creations.filter(result => result.status === 'fulfilled').length, 1);
-  await backend.delete('concurrent-create');
-  await assert.rejects(backend.get('missing/key'), error => error === errNotFound);
-
-  for (const name of ['chunks/ab/ab01', 'chunks/ab/ab02', 'chunks/cd/cd01', 'snapshots/one'])
-    await backend.put(name, Buffer.from('encrypted bytes\0\x01\x02'));
-
-  // Wiping an owned buffer mustn't affect the next download of the same object.
-  if (backend.getOwned) {
-    const owned = await backend.getOwned('chunks/ab/ab01');
-    owned.fill(0);
-    assert.equal((await backend.getOwned('chunks/ab/ab01')).toString(), 'encrypted bytes\0\x01\x02');
-  }
-
-  assert.deepEqual((await backend.list('chunks/')).sort(), ['chunks/ab/ab01', 'chunks/ab/ab02', 'chunks/cd/cd01']);
-  await backend.delete('chunks/ab/ab02');
-  await backend.delete('chunks/ab/ab02');
-  await assert.rejects(backend.get('chunks/ab/ab02'), error => error === errNotFound);
-  assert.equal((await backend.list('')).length, 3);
 }
 
 test('bounded responses enforce declared and unknown size and preserve read errors', async () => {

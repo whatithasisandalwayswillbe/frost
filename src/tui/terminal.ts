@@ -6,13 +6,15 @@ import type { KeyEvent } from './input.js';
 import { convertProfile, terminalProfile, type ColorProfile } from '../cli/terminal.js';
 
 // TerminalModel is what runTerminal needs from a screen. animation() asks for regular redraws.
-// 'game' calls tick every 50 ms, and 'spinner' advances spin every 100 ms.
+// 'game' calls tick every 50 ms, and 'spinner' advances spin every 100 ms. runTerminal sets onChange and
+// suspend while it runs.
 interface TerminalModel {
   w: number;
   h: number;
   spin: number;
   exited: boolean;
   onChange?: () => void;
+  suspend?: <T>(work: () => Promise<T>) => Promise<T>;
   resize(w: number, h: number): void;
   view(): string;
   onKey(e: KeyEvent | string): void | Promise<void>;
@@ -170,6 +172,7 @@ export async function runTerminal(model: TerminalModel, options: TerminalOptions
   const now = options.now ?? (() => performance.now());
   let escaped: ReturnType<typeof setTimeout> | undefined;
   let finished = false;
+  let suspended = false;
 
   const resize = () => {
     model.resize(output.columns ?? 80, output.rows ?? 24);
@@ -177,7 +180,8 @@ export async function runTerminal(model: TerminalModel, options: TerminalOptions
   };
   // Each frame overwrites the last one from the top-left corner, in the colours the terminal supports.
   const draw = () => {
-    if (!finished) output.write('\x1b[H' + convertProfile(model.view(), profile).replaceAll('\n', '\r\n'));
+    if (!finished && !suspended)
+      output.write('\x1b[H' + convertProfile(model.view(), profile).replaceAll('\n', '\r\n'));
   };
 
   // Draws straight after the key so a busy state shows, then again once an async handler settles.
@@ -214,6 +218,7 @@ export async function runTerminal(model: TerminalModel, options: TerminalOptions
       options.signal?.removeEventListener('abort', finish);
       model.close?.();
       model.onChange = undefined;
+      model.suspend = undefined;
       input.setRawMode(wasRaw ?? false);
       input.pause();
       output.write('\x1b[?2004l\x1b[?25h\x1b[?1049l');
@@ -234,6 +239,29 @@ export async function runTerminal(model: TerminalModel, options: TerminalOptions
       escaped = setTimeout(() => {
         for (const e of decoder.flushEscape()) effect(e);
       }, 30);
+    };
+
+    // Hands the terminal to work that needs it, like ssh asking for a password. Keys stop being read, and the
+    // normal screen, cursor and input mode come back while it runs. Then the full screen returns and redraws.
+    const suspend = async <T>(work: () => Promise<T>): Promise<T> => {
+      suspended = true;
+      input.off('data', data);
+      if (escaped) clearTimeout(escaped);
+      input.setRawMode(wasRaw ?? false);
+      input.pause();
+      output.write('\x1b[?2004l\x1b[?25h\x1b[?1049l');
+      try {
+        return await work();
+      } finally {
+        suspended = false;
+        if (!finished) {
+          output.write('\x1b[?1049h\x1b[?25l\x1b[?2004h');
+          input.setRawMode(true);
+          input.on('data', data);
+          input.resume();
+          resize();
+        }
+      }
     };
 
     // Game ticks follow the clock, because a Windows timer can fire up to a 15.6 ms clock tick late, and counting
@@ -269,6 +297,7 @@ export async function runTerminal(model: TerminalModel, options: TerminalOptions
     }, 50);
 
     model.onChange = draw;
+    model.suspend = suspend;
     input.on('data', data);
     input.on('error', fail);
     input.on('end', finish);

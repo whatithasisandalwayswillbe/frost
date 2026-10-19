@@ -72,7 +72,7 @@ In a terminal, `frost init` opens a full-screen setup that asks one thing at a t
 
 | Step | What it asks |
 |---|---|
-| Storage | Permafrost (an access key, or get one in the browser), or an [S3-compatible service](#storage-compatibility). Presets fill in provider-specific questions |
+| Storage | Permafrost (an access key, or get one in the browser), an [S3-compatible service](#storage-compatibility) from a second list, Self-hosted (your server over SSH) or Local drive (a folder on a connected drive). Each asks only what it needs |
 | Folders | Full paths (`~` works). Nothing is picked for you. A folder that's already on the list, or inside one that is, isn't added twice. A folder that doesn't exist yet is skipped until it does |
 | Skip | Names or patterns to leave out. Starts with the `exclude` defaults, which you can remove |
 | Schedule | How often to back up automatically, or off |
@@ -83,28 +83,62 @@ Setup connects right after the storage step and checks it can read, list, write 
 
 Picking Permafrost asks whether you have an access key. If you don't, frost opens [getfro.st/perma](https://getfro.st/perma) in your browser, and you paste the key it gives you. With a custom Permafrost server, setup only asks for the key.
 
+Picking Self-hosted or Local drive works as [Self-hosted storage](#self-hosted-storage) and [Local drive storage](#local-drive-storage) describe.
+
 Saving writes `config.toml` and the key file and installs the scheduled job. Run `frost init` again any time to review or change your settings.
 
 The full-screen setup doesn't ask for a Permafrost server or a folder inside an S3 bucket, and keeps whatever's already set. Use `frost config edit` for a new server or prefix, accept its warning, save and run `frost init` again. `frost config set` requires an existing repository at the new location. For a fresh custom-server setup, prepare `config.toml` as described in the [Permafrost help](https://getfro.st/help/storage/permafrost).
 
-With piped input, `init` asks plain questions, one per line. It offers a generic S3 option instead of the provider presets and asks for the folder inside the bucket. Getting a Permafrost key works there too.
+With piped input, `init` asks plain questions, one per line. It offers one generic S3 choice instead of the S3 list and asks for the folder inside the bucket. Getting a Permafrost key works there too, and so does adding frost's SSH key to a server.
 
 If Permafrost rejects your access key or refuses an upload, commands that access your backups stop with an error that gives Permafrost's reason. Run `frost init` again to set up a working key.
 
+### Self-hosted storage
+
+Self-hosted storage is a folder on a server you reach over SSH: a Linux machine, a NAS, a VPS, or a Mac or Windows computer with its SSH server on. frost runs the system's OpenSSH client and speaks SFTP over it, so the server needs nothing else installed.
+
+Setup asks for the server's SSH address, like `me@nas.local` (add `:2222` for another port, or use a `Host` from your SSH config), and a folder on it. A relative folder starts in your home folder there, and setup creates the folder's last part if it's missing.
+
+frost supplies its own SSH key, `ssh/frost_ed25519` in the config folder, which setup makes the first time. It never uses your SSH agent or asks for a password, so scheduled backups log in the same way. Explicit `IdentityFile` entries in your SSH config may also be offered. If the server doesn't accept a key yet, setup offers two ways to add frost's key:
+
+| Choice | What happens |
+|---|---|
+| Add it for me | ssh runs in the terminal, shows the server's fingerprint the first time, asks for your password there and adds the key line to `~/.ssh/authorized_keys`. The line starts with `restrict`, disabling forwarding and terminal allocation. Shell commands still work unless the server restricts the account to SFTP |
+| I'll add it myself | Setup shows where the public key file is. After you add its line to the server, the next connection trusts the server's host key if this computer hasn't seen it before |
+
+A server whose host key changes is refused until you remove the old key with `ssh-keygen -R <host>`. Windows servers need the key added by hand, since the automatic way runs `sh` on the server.
+
+### Local drive storage
+
+Local drive storage is a folder on an internal or external drive. Setup asks for a full path, like `/Volumes/Backup/frost` or `E:\frost`, on a drive that's connected, and creates the path's last folder if it's missing. Nothing after setup creates it, so an unplugged drive can't turn into backups on whatever disk is mounted in its place. A missing folder fails with an error that says to connect the drive, after a scheduled run [tries again for a while](#missed-runs).
+
+frost reads and writes the folder through the same handle-based filesystem calls as restore. It refuses links and junctions inside the folder, and follows links on the way to it only by the rules [overwriting](#overwriting) uses. For a NAS, Self-hosted storage is usually the better choice. A mounted network share works only where its filesystem passes setup's check, and on Windows, use a `\\server\share` path, since mapped drive letters belong to one sign-in.
+
 ### Storage compatibility
 
-frost needs atomic conditional PUTs (`If-None-Match: *`) to prevent machines from overwriting each other's backup metadata. Setup checks that a second create fails without changing the original object. A preset saves typing; it doesn't certify a provider. frost also checks a new storage location before accepting it through `frost config set`.
+frost needs storage that creates an object only when its name is free, atomically, so machines can't overwrite each other's backup metadata. Setup checks that a second create fails without changing the original object, and frost checks a new location again before `frost config set` accepts it.
 
-| Provider | Conditional PUT support |
+| Storage | How objects are created safely |
+|---|---|
+| Self-hosted | A temporary file, then a hard link to the final name with OpenSSH's `hardlink@openssh.com`. Needs an OpenSSH server and a filesystem with hard links, like ext4, Btrfs, XFS, ZFS, APFS or NTFS |
+| Local drive | A temporary file, then a rename that refuses an existing name, or a hard link where the filesystem can't do that. NTFS, APFS, ext4, Btrfs and XFS can |
+| Permafrost | Conditional PUTs, which the [API](PERMAFROST.md) requires |
+| S3-compatible | Conditional PUTs (`If-None-Match: *`), listed below |
+
+A preset saves typing; it doesn't certify a provider.
+
+| S3 service | Conditional PUT support |
 |---|---|
 | Amazon S3 | [Documented](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html) |
 | Cloudflare R2 | [Documented](https://developers.cloudflare.com/r2/api/s3/api/) |
-| MinIO | [Implemented in the server](https://github.com/minio/minio/blob/master/cmd/object-handlers.go). Your installed version must pass setup's check |
+| Ceph (RGW) | [Implemented in the server](https://github.com/ceph/ceph/blob/main/src/rgw/driver/rados/rgw_rados.cc). Your version must pass setup's check |
+| SeaweedFS | [Documented](https://github.com/seaweedfs/seaweedfs/wiki/S3-Conditional-Operations). Your version must pass setup's check |
+| MinIO | [Implemented in the server](https://github.com/minio/minio/blob/master/cmd/object-handlers.go), which is no longer maintained. Your installed version must pass setup's check |
 | Backblaze B2 | Unverified. Its [PUT reference](https://www.backblaze.com/apidocs/s3-put-object) doesn't list `If-None-Match` |
 | Wasabi | Unverified. Its [API reference](https://docs.wasabi.com/apidocs/operations-on-objects) doesn't establish support for conditional PUTs |
 | Garage | Unsupported, according to its [maintainer](https://news.ycombinator.com/item?id=46329908) |
 
-These findings were checked against documentation and source on 2 October 2026, without live cloud-account tests. Setup refuses storage that rejects or ignores conditional creates. Changing credentials can't fix missing provider support.
+These findings were checked against documentation and source on 2 October 2026, and for Ceph, SeaweedFS and MinIO's status on 19 October 2026, without live tests. Setup refuses storage that rejects or ignores conditional creates. Changing credentials can't fix missing support.
 
 ## `frost backup`
 
@@ -121,7 +155,7 @@ A change is a file or folder added or removed, or a file whose contents, size, p
 
 After a backup that saves a snapshot, frost downloads `verify.sample` random chunks and checks them. When nothing changed, it only checks if the last check is more than a day old or found a problem, and shows the last result otherwise. If any check fails, `backup` exits with `1`.
 
-With Permafrost, `backup` ends with a `storage` warning when the server has something to say about the account, such as storage that's nearly full.
+With Permafrost, a self-hosted server or a local drive, `backup` ends with a `storage` warning when the storage has something to say, such as an account or disk that's nearly full.
 
 In a terminal, `backup` asks before it starts when a scheduled backup starts within the next hour, or finished within the last hour. For schedules under 4 hours apart, the window is a quarter of the interval. Enter goes ahead and `n` cancels. A finished scheduled backup only counts when it worked and no backup has run by hand since. There's no question for a dry run, with `--path` or `--exclude`, or when input doesn't come from a terminal.
 
@@ -208,7 +242,7 @@ The new run carries on in the same folder. Files already there are checked and s
 
 ## `frost status`
 
-Shows the version, the storage and key fingerprint, the last backup and whether it worked, when the next one is due, the latest verification result, how updates are set up, and the 10 most recent snapshots. With Permafrost, a `storage` row shows how much the account uses of its limit, and leads with the server's warning when it has one.
+Shows the version, the storage and key fingerprint, the last backup and whether it worked, when the next one is due, the latest verification result, how updates are set up, and the 10 most recent snapshots. With Permafrost, a `storage` row shows how much the account uses of its limit. With a self-hosted server or a local drive, it shows how full the disk is. The row leads with the storage's warning when it has one.
 
 When there are more than 10, a line below the list shows how many older snapshots aren't shown, like `+90` for 100 snapshots.
 
@@ -299,9 +333,13 @@ On Linux, a scheduled run updates its job too. A launchd or Task Scheduler job c
 | `schedule.catch_up` | `true` | Run a backup missed while the computer was off or asleep once it's back. See [Missed runs](#missed-runs) |
 | `verify.sample` | `20` | Chunks downloaded and checked after a backup that saves a snapshot, and at least once a day otherwise. `0` turns the check off |
 | `update.auto` | `true` | Install new releases after scheduled backups. `false` only tells you about them |
-| `storage.backend` | | `s3` or `permafrost` |
+| `storage.backend` | | `permafrost`, `s3`, `sftp` (Self-hosted) or `local` (Local drive) |
+| `storage.sftp.host` | | The server's SSH address, like `me@nas.local`, or a `Host` from your SSH config |
+| `storage.sftp.port` | `0` | `0` uses the port from your SSH config, or 22 |
+| `storage.sftp.path` | `frost` | The folder on the server. A relative path starts in your home folder there |
+| `storage.local.path` | | The full path of the folder on a drive |
 | `storage.s3.endpoint` | | Like `s3.us-east-1.amazonaws.com`. A full `https://` URL also works, and an `http://` one turns off TLS |
-| `storage.s3.region` | | Blank if your provider doesn't use one |
+| `storage.s3.region` | | Blank if your server or provider doesn't use one |
 | `storage.s3.bucket` | | Must already exist |
 | `storage.s3.prefix` | `frost` | The folder inside the bucket that holds everything. Empty for the top level |
 | `storage.s3.access_key_id` | | |
@@ -314,11 +352,11 @@ On Linux, a scheduled run updates its job too. A launchd or Task Scheduler job c
 
 | You want to | Do this |
 |---|---|
-| Move them to another folder or bucket | Move the whole folder (`frost.repo`, `chunks/`, `snapshots/` and `trees/`), then point frost at it with `frost config set`. Nothing uploads again |
+| Move them to another folder, drive, server or bucket | Move the whole folder (`frost.repo`, `chunks/`, `snapshots/` and `trees/`), then point frost at it with `frost config set`, or with `frost init` for another kind of storage. Nothing uploads again |
 | Start a separate set of backups somewhere else | Run `frost init` and point it at the empty location. The old backups stay where they are, but frost only shows the new ones |
 | Go back to backups you moved away from | Set the old location again |
 
-Moving only `frost.repo` doesn't move your backups. `frost config set` checks a new location before saving it, and refuses one with no frost repository or a different key. It also refuses a copy with no snapshots when the old location still has snapshots for the same repository. `frost config edit` shows them as warnings before you save, so it can still make a change `set` refuses. A location changed in `config.toml` directly gets the same warnings the first time it's used, as [Editing `config.toml` directly](#editing-configtoml-directly) describes. If frost can't find your backups, the error and `frost status` say where they were last opened and how to get back to them.
+Self-hosted, local drive and S3 storage keep the same files under one folder, so a copy with rsync, rclone or a file manager moves a repository between them. Moving only `frost.repo` doesn't move your backups. `frost config set` checks a new location before saving it, and refuses one with no frost repository or a different key. It also refuses a copy with no snapshots when the old location still has snapshots for the same repository. `frost config edit` shows them as warnings before you save, so it can still make a change `set` refuses. A location changed in `config.toml` directly gets the same warnings the first time it's used, as [Editing `config.toml` directly](#editing-configtoml-directly) describes. If frost can't find your backups, the error and `frost status` say where they were last opened and how to get back to them.
 
 ### Environment variables
 
@@ -346,6 +384,7 @@ Values from the environment are never written to `config.toml`.
 |---|---|---|
 | Config | `~/.config/frost/config.toml` | `%AppData%\frost\config.toml` |
 | Key | `~/.config/frost/key` | `%AppData%\frost\key` |
+| SSH key for self-hosted storage, and its public half with `.pub` | `~/.config/frost/ssh/frost_ed25519` | `%AppData%\frost\ssh\frost_ed25519` |
 | Manifest (a cache) | `~/.cache/frost/manifest-<repo>.jsonl` | `%LocalAppData%\frost\manifest-<repo>.jsonl` |
 | Where backups last opened, one per config folder | `~/.cache/frost/storage-<config>.json` | `%LocalAppData%\frost\storage-<config>.json` |
 | Update check | `~/.cache/frost/update.json` | `%LocalAppData%\frost\update.json` |
@@ -388,7 +427,7 @@ With `schedule.catch_up` on, a backup missed while the computer was off or aslee
 
 Every scheduled run checks `schedule-<config>.json` in the cache folder first. It exits without a log line or update check when a full backup has already started for the latest run time, whether scheduled or by hand, or when the job was installed after that time. A run that starts more than 10 minutes late is catching up, and with `schedule.catch_up` off frost skips it. That includes the runs launchd and systemd always start on wake. If frost can't read its settings or that file, it backs up.
 
-A scheduled run that can't reach storage, often because the computer has only just woken, tries again for about 5 minutes. If another backup or a restore is using your backups, it waits up to an hour for it to finish.
+A scheduled run that can't reach storage, often because the computer has only just woken or a drive or share isn't mounted yet, tries again for about 5 minutes. If another backup or a restore is using your backups, it waits up to an hour for it to finish.
 
 ## Exit codes
 

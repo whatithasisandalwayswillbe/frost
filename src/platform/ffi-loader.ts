@@ -41,6 +41,13 @@ export interface FFI {
   };
   getRawPointer(value: Buffer): bigint;
   getInt32(pointer: bigint, offset?: number): number;
+  setInt32(pointer: bigint, offset: number, value: number): void;
+  getUint8(pointer: bigint, offset?: number): number;
+  getUint16(pointer: bigint, offset?: number): number;
+  // Copies length bytes from native memory.
+  toBuffer(pointer: bigint, length: number): Buffer;
+  // Reads a NUL-terminated UTF-8 string from native memory.
+  toString(pointer: bigint): string;
 }
 
 let loaded: FFI | undefined;

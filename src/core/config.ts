@@ -7,6 +7,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { type S3Config } from './storage.js';
+import type { SFTPConfig } from './sftp.js';
+import type { LocalConfig } from './local.js';
 export { newBackend } from './storage.js';
 
 export interface Config {
@@ -15,12 +17,18 @@ export interface Config {
   schedule: { enabled: boolean; every: string; time: string; day: string; catch_up: boolean };
   verify: { sample: number };
   update: { auto: boolean };
-  storage: { backend: string; s3: S3Config; permafrost: { url: string; token: string } };
+  storage: {
+    backend: string;
+    s3: S3Config;
+    permafrost: { url: string; token: string };
+    sftp: SFTPConfig;
+    local: LocalConfig;
+  };
 }
 
 export type Storage = Config['storage'];
 
-// The S3 folder that holds the repository unless storage.s3.prefix says otherwise.
+// The S3 folder, and the folder on an SFTP server, that hold the repository unless the settings say otherwise.
 const defaultPrefix = 'frost';
 // Intervals offered to users. interval() also accepts 1h, 24h and 168h.
 export const intervals = ['hourly', '2h', '3h', '4h', '6h', '8h', '12h', 'daily', 'weekly'];
@@ -47,6 +55,8 @@ export function defaultConfig(): Config {
         insecure: false,
       },
       permafrost: { url: '', token: '' },
+      sftp: { host: '', port: 0, path: defaultPrefix },
+      local: { path: '' },
     },
   };
 }
@@ -93,6 +103,9 @@ export function times(s: Config['schedule']): { every: number; hour: number; min
   return { every: interval(s.every), ...timeOfDay(s.time), day: weekday(s.day) };
 }
 
+// The storage.backend values, as errors list them.
+export const backends = 'permafrost, s3, sftp or local';
+
 // Reports every problem at once, one per line, so the user can fix them in one pass.
 export function validate(c: Config): void {
   const errors: string[] = [];
@@ -109,11 +122,17 @@ export function validate(c: Config): void {
         errors.push((error as Error).message);
       }
   if (c.verify.sample < 0) errors.push("verify.sample can't be negative");
-  if (c.storage.backend === 's3') {
-    if (!c.storage.s3.endpoint || !c.storage.s3.bucket) errors.push('storage.s3 needs an endpoint and a bucket');
-  } else if (!c.storage.backend) errors.push("storage.backend isn't set (s3 or permafrost)");
-  else if (c.storage.backend !== 'permafrost')
-    errors.push(`unknown storage.backend ${JSON.stringify(c.storage.backend)} (s3 or permafrost)`);
+  const { backend, s3, sftp, local } = c.storage;
+  if (backend === 's3') {
+    if (!s3.endpoint || !s3.bucket) errors.push('storage.s3 needs an endpoint and a bucket');
+  } else if (backend === 'sftp') {
+    if (!sftp.host.trim() || !sftp.path.trim()) errors.push('storage.sftp needs a host and a path');
+  } else if (backend === 'local') {
+    if (!local.path.trim()) errors.push('storage.local needs a path');
+  } else if (!backend) errors.push("storage.backend isn't set (" + backends + ')');
+  else if (backend !== 'permafrost') errors.push(`unknown storage.backend ${JSON.stringify(backend)} (${backends})`);
+  if (sftp.port < 0 || sftp.port > 65535)
+    errors.push('storage.sftp.port must be from 1 to 65535, or 0 for the SSH default');
   if (errors.length) throw new Error(errors.join('\n'));
 }
 
@@ -153,6 +172,11 @@ export function configPath(): string {
 
 export function keyPath(): string {
   return path.join(dir(), 'key');
+}
+
+// The SSH key frost logs in to a self-hosted server with. Its public half sits next to it with a .pub ending.
+export function sshKeyPath(): string {
+  return path.join(dir(), 'ssh', 'frost_ed25519');
 }
 
 // Parses TOML over a copy of `initial`. Unknown settings and values whose type differs from the
@@ -265,7 +289,8 @@ export function render(c: Config): string {
     Array.isArray(value) ? '[' + value.map(v => JSON.stringify(v)).join(', ') + ']' : JSON.stringify(value);
   return `# frost config. Edit by hand or with \`frost config set\`.
 # Nothing in here is secret except the storage credentials. Your encryption
-# key lives in a separate file next to this one.
+# key lives in a separate file next to this one, and the SSH key for a
+# self-hosted server lives in the ssh folder.
 
 # Directories to back up. ~ means your home directory.
 paths = ${q(c.paths)}
@@ -300,7 +325,8 @@ sample = ${c.verify.sample}
 auto = ${c.update.auto}
 
 [storage]
-# "permafrost", or "s3" for any S3-compatible bucket.
+# "permafrost", "s3" for any S3-compatible bucket, "sftp" for your own server
+# over SSH, or "local" for a folder on a drive.
 backend = ${q(c.storage.backend)}
 
 [storage.s3]
@@ -319,6 +345,19 @@ insecure = ${c.storage.s3.insecure}
 url = ${q(c.storage.permafrost.url)}
 # Can also come from FROST_PERMAFROST_TOKEN.
 token = ${q(c.storage.permafrost.token)}
+
+[storage.sftp]
+# Your server's SSH address, like "me@nas.local", or a Host from your SSH
+# config. frost logs in with its own key, in the ssh folder.
+host = ${q(c.storage.sftp.host)}
+# 0 uses the port from your SSH config, or 22.
+port = ${c.storage.sftp.port}
+# The folder on the server. A relative path starts in your home folder there.
+path = ${q(c.storage.sftp.path)}
+
+[storage.local]
+# The full path of a folder on a drive, like "/Volumes/Backup/frost" or E:\\frost.
+path = ${q(c.storage.local.path)}
 `;
 }
 
@@ -343,6 +382,10 @@ const configKeys = [
   'storage.s3.insecure',
   'storage.permafrost.url',
   'storage.permafrost.token',
+  'storage.sftp.host',
+  'storage.sftp.port',
+  'storage.sftp.path',
+  'storage.local.path',
 ].sort();
 
 export function keys(): string[] {
@@ -390,7 +433,9 @@ export function set(c: Config, key: string, values: string[]): void {
     } else if (typeof old === 'number') {
       if (values.length !== 1) throw new Error('expected a number');
       if (!/^\+?\d+$/.test(values[0]) || !Number.isSafeInteger(Number(values[0])))
-        throw new Error(`expected a number of chunks, got ${JSON.stringify(values[0])}`);
+        throw new Error(
+          `expected ${key === 'storage.sftp.port' ? 'a port number' : 'a number of chunks'}, got ${JSON.stringify(values[0])}`,
+        );
       value = Number(values[0]);
     } else {
       if (values.length !== 1) throw new Error(`expected one value, got ${values.length}`);

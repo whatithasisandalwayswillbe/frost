@@ -9,7 +9,9 @@ import * as config from '../core/config.js';
 import { Key } from '../core/crypto.js';
 import { Repo, errNotInitialized, errWrongKey } from '../core/repo.js';
 import { Manifest } from '../core/manifest.js';
-import { newBackend, type Backend } from '../core/storage.js';
+import { MissingRootError, newBackend, type Backend } from '../core/storage.js';
+import { sshProgram } from '../core/sftp.js';
+import { ensureKey, installArgs } from '../core/sshkey.js';
 import { Engine } from '../engine/index.js';
 import * as schedule from '../platform/schedule.js';
 import * as update from '../platform/update.js';
@@ -52,6 +54,11 @@ export interface Hooks {
   pickWords: () => [number, number];
   openEditor: (command: string[], file: string) => Promise<void>;
   openBrowser: (url: string) => Promise<void>;
+  reveal: (file: string) => Promise<void>;
+  // frost's own SSH key for self-hosted storage, made on first use, as its public authorized_keys line.
+  sshKey: () => Promise<string>;
+  // Runs ssh in the terminal to add a line to the server's authorized_keys. ssh asks for the password itself.
+  sshInstall: (host: string, port: number, line: string) => Promise<void>;
   latestRelease: (signal?: AbortSignal) => Promise<update.Release>;
   installRelease: (release: update.Release, root: string, signal?: AbortSignal) => Promise<void>;
   selfPath: () => string | Promise<string>;
@@ -143,6 +150,26 @@ function defaultHooks(): Hooks {
       });
     },
     openBrowser: desktop.openBrowser,
+    reveal: desktop.reveal,
+    sshKey: () => ensureKey(),
+
+    // The line goes in on standard input, while ssh talks to the terminal for the password and, the first
+    // time, the server's fingerprint.
+    sshInstall: (host, port, line) =>
+      new Promise<void>((resolve, reject) => {
+        const child = spawn(sshProgram(), installArgs(host, port), {
+          stdio: ['pipe', 'inherit', 'inherit'],
+          windowsHide: false,
+        });
+        child.once('error', error =>
+          reject(code(error) === 'ENOENT' ? new Error("the OpenSSH client (ssh) isn't installed") : error),
+        );
+        child.once('close', status =>
+          status === 0 ? resolve() : reject(new Error('ssh stopped' + (status === null ? '' : ' with code ' + status))),
+        );
+        child.stdin.on('error', () => {});
+        child.stdin.end(line + '\n');
+      }),
     latestRelease: signal => update.latest({ signal, userAgent: 'frost/' + version }),
     installRelease: (rel, root, signal) => update.installRelease(rel, root, { signal }),
     selfPath: update.executable,
@@ -267,6 +294,8 @@ export class Context {
       repo = await Repo.open(backend, key, this.signal);
     } catch (e) {
       const msg = (e as Error).message;
+      // A missing folder already names itself, like a drive that isn't connected.
+      if (e instanceof MissingRootError) throw e;
       if (e === errNotInitialized)
         throw await cantOpen(`${backend} has no frost repository`, cfg.storage, backend, true);
       if (e === errWrongKey)

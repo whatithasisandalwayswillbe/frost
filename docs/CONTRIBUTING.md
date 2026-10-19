@@ -8,7 +8,7 @@ The changes most likely to be accepted are:
 
 - Bug fixes
 - Fixes for a specific OS, filesystem or scheduler
-- Fixes for S3-compatible providers that don't work yet
+- Fixes for SSH servers, NAS systems, filesystems and S3-compatible services that don't work yet
 - Faster or lighter backups, restores and verification
 - Tests for behaviour that isn't covered yet
 - Documentation fixes
@@ -90,10 +90,10 @@ The title becomes the commit message when the pull request is squash merged. Mak
 
 ## Issues
 
-Before opening an issue, check the docs at [getfro.st/help](https://getfro.st/help) and the existing issues. A bug report needs your frost version (`frost --version`), your OS, your storage provider, the command you ran and what it printed. Leave out your recovery phrase and storage credentials. `frost config` masks credentials unless you ask it not to.
+Before opening an issue, check the docs at [getfro.st/help](https://getfro.st/help) and the existing issues. A bug report needs your frost version (`frost --version`), your OS, the kind of storage you use (with the server, NAS or provider), the command you ran and what it printed. Leave out your recovery phrase and storage credentials. `frost config` masks credentials unless you ask it not to.
 
-## Storage providers
+## Storage
 
-An S3-compatible service needs atomic conditional writes to work through the `s3` backend. [CLI.md](CLI.md#storage-compatibility) lists the requirement and provider findings. If setup fails, open an issue with the provider's name and the error `frost init` shows.
+Every kind of storage needs a way to create an object only when its name is free, atomically. [CLI.md](CLI.md#storage-compatibility) lists how each kind does it and the S3 findings. If setup fails, open an issue with the server, filesystem or service, and the error `frost init` shows.
 
 A new storage backend needs an issue first. It implements the `Backend` interface in `src/core/storage.ts` and passes the contract tests, as [ARCHITECTURE.md](ARCHITECTURE.md#storage-backends) describes.

@@ -56,23 +56,31 @@ interface LastSaved {
   entries: string;
 }
 
+// The storage location, followed by the storage behind it for a backend that reports one, such as the drive
+// mounted at a path. A copy of the repository on another drive at the same path is then somewhere else.
+async function syncWhere(e: EngineLike, signal?: AbortSignal): Promise<string> {
+  const identity = await e.repo.backend.identity?.(signal);
+  return location(e.repo.backend) + (identity ? '#' + identity : '');
+}
+
 // Backup trusts the manifest's chunk list for up to seven days, and only at the storage location where it
 // was checked. A chunk that verification found missing, an empty list or a bad timestamp also forces a sync.
-export function syncDue(e: EngineLike): boolean {
+export async function syncDue(e: EngineLike, signal?: AbortSignal): Promise<boolean> {
   const m = e.manifest!;
   const s = m.getMeta<ChunkSync>('chunk_sync');
-  if (!s || s.needed || !m.anyChunks() || s.where !== location(e.repo.backend)) return true;
+  if (!s || s.needed || !m.anyChunks() || s.where !== (await syncWhere(e, signal))) return true;
   const age = Date.now() - Date.parse(s.time);
   return !Number.isFinite(age) || age < 0 || age > 7 * 24 * 3600_000;
 }
 
 // Replaces the manifest's chunk list with a listing of storage.
 export async function syncChunks(e: EngineLike, signal?: AbortSignal): Promise<void> {
+  const where = await syncWhere(e, signal);
   const ids = await e.repo.chunkIDs(signal);
   check(signal);
   await e.manifest!.batch(tx => {
     tx.replaceChunks(ids);
-    tx.putMeta('chunk_sync', { time: new Date().toISOString(), where: location(e.repo.backend) });
+    tx.putMeta('chunk_sync', { time: new Date().toISOString(), where });
   });
 }
 
@@ -370,7 +378,7 @@ export async function backup(e: EngineLike, opts: BackupOptions, signal?: AbortS
   };
 
   try {
-    if (syncDue(e)) {
+    if (await syncDue(e, signal)) {
       try {
         await syncChunks(e, signal);
       } catch (err) {

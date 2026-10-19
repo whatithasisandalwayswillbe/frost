@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SetupModel, RepoState, type SetupDeps } from '../../src/tui/setup.js';
+import { SetupModel, RepoState, ConnectError, type SetupDeps } from '../../src/tui/setup.js';
 import { defaultConfig } from '../../src/tui/types.js';
 import { Arcade } from '../../src/tui/arcade.js';
 import { strip, width, height } from '../../src/tui/render.js';
@@ -13,14 +13,20 @@ import { reference, setupInput } from './references.js';
 // A fixed key, so phrase and fingerprint screens render the same every run.
 const key = { phrase: () => Array(24).fill('abandon').join(' '), fingerprint: () => 'abcd1234abcd' };
 
-// Setup dependencies with no real storage. Only the Permafrost access key 'good' connects.
+// Setup dependencies with no real storage. Only the Permafrost access key 'good' connects, and a self-hosted
+// server only takes frost's SSH key once it was added by hand.
 function deps(): SetupDeps {
   return {
-    connect: async s => {
+    connect: async (s, _signal, options) => {
       if (s.backend === 'permafrost' && s.permafrost.token !== 'good')
         throw new Error("that access key wasn't accepted");
+      if (s.backend === 'sftp' && !options?.acceptNewHostKey)
+        throw new ConnectError('login', "the server didn't accept frost's SSH key");
       return RepoState.New;
     },
+    addKey: async () => {},
+    keyFile: () => '~/.config/frost/ssh/frost_ed25519.pub',
+    reveal: () => {},
     newKey: () => key,
     unlock: async () => key,
     finish: async () => [['config', '~/.config/frost/config.toml']],
@@ -179,7 +185,8 @@ for (const [w, h] of [
     assert.equal(m.saved, true);
   });
 
-// Captures the screens off the main path: unlocking an existing repository, choosing B2 and getting a Permafrost key.
+// Captures the screens off the main path: unlocking an existing repository, choosing B2 from the S3 list and getting
+// a Permafrost key.
 for (const [w, h] of [
   [120, 40],
   [80, 24],
@@ -206,6 +213,9 @@ for (const [w, h] of [
     await b2.onKey('enter');
     await b2.onKey('down');
     await b2.onKey('enter');
+    same(b2.view(), name('02c-s3-choice'));
+    await b2.onKey('down');
+    await b2.onKey('enter');
     same(b2.view(), name('23-b2'));
 
     const perma = new SetupModel(deps(), defaultConfig());
@@ -218,4 +228,44 @@ for (const [w, h] of [
     // Without a key, the key field says where to get one.
     await perma.onKey('enter');
     same(perma.view(), name('25-permafrost-get-key'));
+  });
+
+// Captures self-hosted storage, from its two questions to both screens for adding frost's SSH key, and the local
+// drive question with a path typed in, since its placeholder depends on the system.
+for (const [w, h] of [
+  [120, 40],
+  [80, 24],
+  [56, 18],
+])
+  test(`setup matches captured self-hosted and local drive frames at ${w}x${h}`, async () => {
+    const suffix = String(w).padStart(3, '0');
+    const name = (s: string) => 'setup-' + s + '-' + suffix;
+    const shot = (m: SetupModel, s: string) => {
+      assert.equal(width(m.view()), w);
+      assert.equal(height(m.view()), h);
+      same(m.view(), name(s));
+    };
+
+    const ssh = new SetupModel(deps(), defaultConfig());
+    ssh.resize(w, h);
+    await ssh.onKey('enter');
+    await ssh.onKey('3');
+    await ssh.onKey('enter');
+    shot(ssh, '30-self-hosted-address');
+    await ssh.onKey({ key: 'text', text: 'me@nas.local' });
+    await ssh.onKey('enter');
+    shot(ssh, '31-self-hosted-folder');
+    await ssh.onKey('enter');
+    shot(ssh, '32-key-choice');
+    await ssh.onKey('down');
+    await ssh.onKey('enter');
+    shot(ssh, '33-key-manual');
+
+    const drive = new SetupModel(deps(), defaultConfig());
+    drive.resize(w, h);
+    await drive.onKey('enter');
+    await drive.onKey('4');
+    await drive.onKey('enter');
+    await drive.onKey({ key: 'text', text: '/mnt/backup/frost' });
+    shot(drive, '34-local-drive');
   });

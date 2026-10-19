@@ -11,7 +11,15 @@ import { BrowserModel, dateLabel, type BrowserDeps } from '../../src/tui/browser
 import { FileTree } from '../../src/tui/tree.js';
 import { RestoreError } from '../../src/engine/restore.js';
 import { SetupModel, RepoState, ConnectError, type SetupDeps } from '../../src/tui/setup.js';
-import { providers, matchProvider } from '../../src/tui/providers.js';
+import {
+  providers,
+  matchProvider,
+  describeStorage,
+  splitAddress,
+  joinAddress,
+  checkAddress,
+  checkDrivePath,
+} from '../../src/tui/providers.js';
 import { Form, inputText } from '../../src/tui/input.js';
 import { InputDecoder, runTerminal } from '../../src/tui/terminal.js';
 import { Arcade, Canvas } from '../../src/tui/arcade.js';
@@ -498,9 +506,12 @@ test('setup resumes local keys, retries wrong phrases, keeps secrets covered, an
   assert.equal(m.step, 'review');
   assert.equal(m.key, key);
 
-  // Editing storage shows its details without the secret.
+  // Editing storage goes through the S3 list, with B2 highlighted, to its details without the secret.
   m.revCur = 0;
   await m.onKey('e');
+  await m.onKey('enter');
+  assert.equal(m.step, 's3Choice');
+  assert.match(strip(m.view()), /\(•\) Backblaze B2/);
   await m.onKey('enter');
   assert.equal(m.step, 'details');
   assert.ok(!strip(m.view()).includes('shh-secret'));
@@ -542,7 +553,7 @@ test('setup resumes local keys, retries wrong phrases, keeps secrets covered, an
   assert.equal(n.step, 'review');
 });
 
-test('setup recognises a storage provider only by its endpoint host name', () => {
+test('setup recognises S3 services only by endpoint host name, and other storage by backend', () => {
   const provider = (endpoint: string) => {
     const s = defaultConfig().storage;
     s.backend = 's3';
@@ -564,6 +575,214 @@ test('setup recognises a storage provider only by its endpoint host name', () =>
     'not a host',
   ])
     assert.equal(provider(endpoint), 'Other S3-compatible', endpoint);
+
+  // Self-hosted and local drive storage match by backend, and a backend setup doesn't know counts as Permafrost.
+  const kind = (backend: string) => {
+    const s = defaultConfig().storage;
+    s.backend = backend;
+    return providers[matchProvider(s)].name;
+  };
+  assert.equal(kind('sftp'), 'Self-hosted');
+  assert.equal(kind('local'), 'Local drive');
+  assert.equal(kind(''), 'Permafrost');
+  assert.equal(kind('ftp'), 'Permafrost');
+});
+
+test('setup reads SSH addresses with ports, aliases and IPv6, and describes the new storage', () => {
+  assert.deepEqual(splitAddress('me@nas.local'), { host: 'me@nas.local', port: 0 });
+  assert.deepEqual(splitAddress('me@nas.local:2222'), { host: 'me@nas.local', port: 2222 });
+  assert.deepEqual(splitAddress('backup-box'), { host: 'backup-box', port: 0 });
+  assert.deepEqual(splitAddress('me@[fe80::1]:2222'), { host: 'me@fe80::1', port: 2222 });
+  assert.deepEqual(splitAddress('fe80::1'), { host: 'fe80::1', port: 0 });
+  assert.equal(joinAddress('me@nas.local', 2222), 'me@nas.local:2222');
+  assert.equal(joinAddress('me@fe80::1', 2222), 'me@[fe80::1]:2222');
+  assert.equal(joinAddress('nas', 0), 'nas');
+
+  assert.equal(checkAddress('me@nas.local:2222'), '');
+  assert.match(checkAddress('me nas'), /no spaces/);
+  assert.match(checkAddress('-oProxyCommand=sh'), /like me@nas.local/);
+  assert.match(checkAddress('nas:70000'), /1 to 65535/);
+  assert.match(checkAddress('nas:0'), /1 to 65535/);
+  assert.match(checkDrivePath('relative/frost'), /full path/);
+  assert.equal(checkDrivePath(path.join(os.tmpdir(), 'frost')), '');
+
+  const s = defaultConfig().storage;
+  s.backend = 'sftp';
+  Object.assign(s.sftp, { host: 'me@nas.local', port: 2222, path: 'backups/frost' });
+  assert.equal(describeStorage(s), 'Self-hosted, me@nas.local:2222, folder backups/frost');
+  s.backend = 'local';
+  s.local.path = '/Volumes/Backup/frost';
+  assert.equal(describeStorage(s), 'Local drive, /Volumes/Backup/frost');
+
+  // The drive path placeholder is in this system's style.
+  const placeholder = providers[matchProvider(s)].fields[0].placeholder;
+  assert.equal(
+    placeholder,
+    'like ' +
+      (process.platform === 'win32'
+        ? 'E:\\frost'
+        : process.platform === 'darwin'
+          ? '/Volumes/Backup/frost'
+          : '/mnt/backup/frost'),
+  );
+});
+
+test('setup groups S3 services in a second list and picks choices by number', async () => {
+  const m = new SetupModel(setupDeps(), defaultConfig());
+  m.resize(80, 24);
+  await m.onKey('enter');
+  assert.equal(m.step, 'storage');
+  assert.deepEqual(
+    strip(m.view())
+      .split('\n')
+      .filter(line => /\( \)|\(•\)/.test(line))
+      .map(line => line.trim().replace(/\s{2,}/g, ' | ')),
+    [
+      '(•) Permafrost | recommended',
+      '( ) S3-compatible | AWS, B2, R2, Wasabi, Ceph',
+      '( ) Self-hosted | your server over SSH',
+      '( ) Local drive | USB or internal disk',
+    ],
+  );
+  await m.onKey('9');
+  assert.equal(m.provCur, 0);
+  await m.onKey('2');
+  await m.onKey('enter');
+  assert.equal(m.step, 's3Choice');
+  await m.onKey('5');
+  await m.onKey('enter');
+  assert.equal(m.step, 'details');
+  assert.equal(providers[m.prov].name, 'Other S3-compatible');
+
+  // esc walks back through the S3 list to the storage list.
+  await m.onKey('esc');
+  assert.equal(m.step, 's3Choice');
+  await m.onKey('esc');
+  assert.equal(m.step, 'storage');
+});
+
+test('setup adds frost SSH key to a self-hosted server for you or by hand', async () => {
+  // A server that refuses frost's key until it's added, or until a connection trusts a new host key after the key
+  // was added by hand.
+  const server = () => {
+    const tried: { host: string; port: number; path: string; accept?: boolean }[] = [];
+    const state = { added: 0, revealed: '' };
+    const deps = setupDeps({
+      connect: async (s, _signal, options) => {
+        tried.push({ ...s.sftp, accept: options?.acceptNewHostKey });
+        if (!state.added && !options?.acceptNewHostKey)
+          throw new ConnectError('login', s.sftp.host + " didn't accept frost's SSH key.");
+        return RepoState.New;
+      },
+      addKey: async () => {
+        state.added++;
+      },
+      keyFile: () => '~/.config/frost/ssh/frost_ed25519.pub',
+      reveal: file => {
+        state.revealed = file;
+      },
+    });
+    return { tried, state, deps };
+  };
+  const toKeyScreen = async (m: SetupModel) => {
+    m.resize(80, 24);
+    await m.onKey('enter');
+    await m.onKey('3');
+    await m.onKey('enter');
+    await m.onKey({ key: 'text', text: 'me@nas.local:2222' });
+    await m.onKey('enter');
+    await m.onKey('enter');
+  };
+
+  // The address and folder questions, then the login refusal goes to the key screen, not an error on the form.
+  const byHand = server();
+  const m = new SetupModel(byHand.deps, defaultConfig());
+  m.resize(80, 24);
+  await m.onKey('enter');
+  await m.onKey('3');
+  await m.onKey('enter');
+  assert.equal(m.step, 'details');
+  assert.match(strip(m.view()), /Self-hosted {2}1 of 2[\s\S]*What's the server's SSH address\?/);
+  await m.onKey({ key: 'text', text: 'me@nas.local:2222' });
+  await m.onKey('enter');
+  assert.match(strip(m.view()), /Self-hosted {2}2 of 2[\s\S]*Which folder on the server\?[\s\S]*frost/);
+  await m.onKey('enter');
+  assert.deepEqual(byHand.tried[0], { host: 'me@nas.local', port: 2222, path: 'frost', accept: undefined });
+  assert.equal(m.step, 'keyChoice');
+  assert.equal(m.err, '');
+  assert.match(strip(m.view()), /Add frost's SSH key to me@nas.local\./);
+
+  // By hand: the key file is shown and can be revealed, and the next connection trusts a new host key.
+  await m.onKey('down');
+  await m.onKey('enter');
+  assert.equal(m.step, 'keyManual');
+  assert.match(strip(m.view()), /~\/\.config\/frost\/ssh\/frost_ed25519\.pub/);
+  await m.onKey('o');
+  assert.equal(byHand.state.revealed, '~/.config/frost/ssh/frost_ed25519.pub');
+  await m.onKey('enter');
+  assert.equal(byHand.tried.at(-1)!.accept, true);
+  assert.equal(m.step, 'folders');
+  assert.equal(m.cfg.storage.backend, 'sftp');
+
+  // For you: ssh adds the key, then setup connects again, without trusting new host keys, and moves on.
+  const forYou = server();
+  const n = new SetupModel(forYou.deps, defaultConfig());
+  await toKeyScreen(n);
+  assert.equal(n.step, 'keyChoice');
+  await n.onKey('enter');
+  assert.equal(forYou.state.added, 1);
+  assert.equal(forYou.tried.at(-1)!.accept, undefined);
+  assert.equal(n.step, 'folders');
+
+  // When ssh fails, the key screen says so. A key that still isn't accepted keeps the manual screen with the reason.
+  const stuck = new SetupModel(
+    setupDeps({
+      connect: async () => {
+        throw new ConnectError('login', "me@nas.local didn't accept frost's SSH key.");
+      },
+      addKey: async () => {
+        throw new Error('ssh stopped with code 255');
+      },
+    }),
+    defaultConfig(),
+  );
+  await toKeyScreen(stuck);
+  await stuck.onKey('enter');
+  assert.equal(stuck.step, 'keyChoice');
+  assert.equal(stuck.err, "The key wasn't added: ssh stopped with code 255.");
+  await stuck.onKey('down');
+  await stuck.onKey('enter');
+  await stuck.onKey('enter');
+  assert.equal(stuck.step, 'keyManual');
+  assert.equal(stuck.err, "me@nas.local didn't accept frost's SSH key.");
+});
+
+test('setup asks local drive storage for a full path', async () => {
+  let tried: string | undefined;
+  const m = new SetupModel(
+    setupDeps({
+      connect: async s => {
+        tried = s.backend + ' ' + s.local.path;
+        return RepoState.New;
+      },
+    }),
+    defaultConfig(),
+  );
+  m.resize(80, 24);
+  await m.onKey('enter');
+  await m.onKey('4');
+  await m.onKey('enter');
+  assert.match(strip(m.view()), /Local drive[\s\S]*Which folder should hold your backups\?/);
+  await m.onKey({ key: 'text', text: 'backups' });
+  await m.onKey('enter');
+  assert.match(m.err, /^Type a full path, like /);
+  assert.equal(tried, undefined);
+  await m.onKey('ctrl+u');
+  const folder = path.join(os.tmpdir(), 'drive', 'frost');
+  await m.onKey({ key: 'text', text: folder });
+  await m.onKey('enter');
+  assert.equal(tried, 'local ' + folder);
+  assert.equal(m.step, 'folders');
 });
 
 test('setup cannot skip viewing the phrase and paging keeps it covered', async () => {

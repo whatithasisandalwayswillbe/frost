@@ -6,21 +6,27 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 ### Added
 
+- **frost backs up to your own server over SSH.** Any machine with an SSH server works, from a NAS or Raspberry Pi to a VPS, with nothing to install on it. frost logs in with its own SSH key, so scheduled backups never need a password, and `frost init` can add the key to the server for you.
+
+- **frost backs up to a local drive.** Pick a folder on an internal or external drive. frost never creates that folder after setup, so an unplugged drive can't send backups to another disk, and a scheduled backup waits a few minutes for a drive that isn't mounted yet.
+
+- **Backups move between drives, servers and buckets.** Self-hosted, local drive and S3 storage keep the same files under one folder, so copying that folder moves a repository without uploading it again.
+
 - **frost backs up to S3-compatible storage.** Everything is encrypted on your machine first, and kept in a `frost/` folder inside the bucket so the bucket can hold other things too.
 
 - **frost can store backups on Permafrost.** Connecting takes one access key, with no bucket, region or endpoint to set up. You can also point frost at your own Permafrost server.
 
 - **`frost init` points you to a Permafrost key.** If you don't have one yet, it opens getfro.st/perma in your browser, and you paste the key it gives you. If Permafrost rejects a key or an upload later, commands that access backups give its reason and point you to `frost init`.
 
-- **`frost status` shows how much Permafrost storage you use.** A `storage` row shows the account's use and limit. `status` and `backup` warn when Permafrost says the account needs attention, such as when it's nearly full.
+- **`frost status` shows how much storage you use.** A `storage` row shows a Permafrost account's use and limit, or how full a self-hosted server's or local drive's disk is. `status` and `backup` warn when the storage needs attention, such as when it's nearly full.
 
-- **`frost init` walks you through setup.** In a terminal it opens a full-screen setup that asks one thing at a time and says where to find each answer, with presets for Amazon S3 and Cloudflare R2 and unverified presets for Backblaze B2 and Wasabi. If connecting fails, it says why in plain words and goes back to the answer that caused it.
+- **`frost init` walks you through setup.** In a terminal it opens a full-screen setup that asks one thing at a time and says where to find each answer. S3 services have their own list, with presets for Amazon S3 and Cloudflare R2 and unverified presets for Backblaze B2 and Wasabi. If connecting fails, it says why in plain words and goes back to the answer that caused it.
 
 - **Backups only upload what changed.** Files are split where their content says, not at fixed offsets, so an edit only re-uploads the chunk or two around it. Files that haven't changed since the last run aren't even read.
 
 - **Interrupted backups pick up where they stopped.** Uploaded chunks are recorded as the run goes, so the next run skips them. On a new machine, frost rebuilds its record from what's already in storage and only uploads new data.
 
-- **Backups rarely list your bucket.** frost trusts its local record of what's stored and compares it with storage once a week, after a check finds something missing, or when the storage moved. `frost status --verify` always compares.
+- **Backups rarely list your storage.** frost trusts its local record of what's stored and compares it with storage once a week, after a check finds something missing, or when the storage moved. `frost status --verify` always compares.
 
 - **Snapshots have short, readable IDs.** IDs look like `maple-absurd-3f1c`. You can restore by ID or by time, like `latest`, `3 days ago` or `2026-09-20`.
 

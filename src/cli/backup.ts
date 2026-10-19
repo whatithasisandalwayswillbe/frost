@@ -264,6 +264,8 @@ const offlineCodes = [
   'EHOSTUNREACH',
   'ENETDOWN',
   'EADDRNOTAVAIL',
+  // A storage folder that isn't there yet, like a drive or share that isn't mounted.
+  'ENOMEDIUM',
 ];
 
 // Whether an error, or one behind it, says the storage couldn't be reached at all.

@@ -8,8 +8,10 @@ import {
   leaf,
   type RootBackend,
   type RootDirectory,
+  type RootEntry,
   type RootFile,
   type RootOpenOptions,
+  type RootSpace,
   type RootStat,
 } from './fs-root-types.js';
 
@@ -23,7 +25,7 @@ const O_CLOEXEC = darwin ? 0x1000000 : 0x80000;
 const nanoseconds = 1_000_000_000n;
 
 type Call = (...args: FFIValue[]) => number | bigint | undefined;
-let native: { lib: FFILibrary; calls: Record<string, Call>; errno: () => number } | undefined;
+let native: { lib: FFILibrary; calls: Record<string, Call>; errno: () => number; clearErrno: () => void } | undefined;
 
 // Binds the system calls once. mode_t is 16 bits on Darwin and 32 bits on Linux.
 function bindings(): NonNullable<typeof native> {
@@ -71,13 +73,40 @@ function bindings(): NonNullable<typeof native> {
 
     // errno is thread-local, so read it through libc's accessor right after each failed call.
     const errnoPointer = lib.getFunction(darwin ? '__error' : '__errno_location', { return: 'pointer', arguments: [] });
-    native = { lib, calls, errno: () => ffi.getInt32(errnoPointer() as bigint) };
+    native = {
+      lib,
+      calls,
+      errno: () => ffi.getInt32(errnoPointer() as bigint),
+      clearErrno: () => ffi.setInt32(errnoPointer() as bigint, 0, 0),
+    };
     return native;
   } catch (error) {
     lib.close();
     throw error;
   }
 }
+
+// Calls only the local drive storage uses, each bound on first use, so a libc without one of them can't stop
+// the rest from loading. Intel Macs need the 64-bit-inode symbols for folder entries and volume sizes.
+const intelMac = darwin && process.arch === 'x64';
+const optional: Record<string, [string, FFIType, FFIType[]]> = {
+  fdopendir: [intelMac ? 'fdopendir$INODE64' : 'fdopendir', 'pointer', ['int32']],
+  readdir: [intelMac ? 'readdir$INODE64' : 'readdir', 'pointer', ['pointer']],
+  closedir: ['closedir', 'int32', ['pointer']],
+  linkat: ['linkat', 'int32', ['int32', 'string', 'int32', 'string', 'int32']],
+  renameNoReplace: [darwin ? 'renameatx_np' : 'renameat2', 'int32', ['int32', 'string', 'int32', 'string', 'uint32']],
+  space: [darwin ? (intelMac ? 'fstatfs64' : 'fstatfs') : 'fstatvfs', 'int32', ['int32', 'buffer']],
+};
+
+function ensure(name: string): void {
+  const api = bindings();
+  if (api.calls[name]) return;
+  const [symbol, result, args] = optional[name];
+  api.calls[name] = api.lib.getFunction(symbol, { return: result, arguments: args });
+}
+
+// The errno for a call that isn't available, ENOSYS: 78 on Darwin and 38 on Linux.
+const ENOSYS = darwin ? 78 : 38;
 
 // Builds an error shaped like Node's own, with the code name from libuv's errno table.
 function systemError(errno: number, syscall: string, name?: string): NodeJS.ErrnoException {
@@ -400,16 +429,104 @@ class PosixDirectory extends PosixFile implements RootDirectory {
     invoke('symlinkat', [target, this.descriptor(), name], name);
   }
 
-  rename(name: string, destination: RootDirectory, destinationName: string): void {
+  // Without replace, renameat2 with RENAME_NOREPLACE (1) on Linux, or renameatx_np with RENAME_EXCL (4) on
+  // Darwin. Filesystems that can't check atomically fail with EINVAL or ENOTSUP, and a libc without the call
+  // fails with ENOSYS.
+  rename(name: string, destination: RootDirectory, destinationName: string, replace = true): void {
     leaf(name);
     leaf(destinationName);
     if (!(destination instanceof PosixDirectory)) throw new Error('incompatible native directory');
-    invoke('renameat', [this.descriptor(), name, destination.descriptor(), destinationName], name);
+    if (replace) {
+      invoke('renameat', [this.descriptor(), name, destination.descriptor(), destinationName], name);
+      return;
+    }
+    try {
+      ensure('renameNoReplace');
+    } catch {
+      throw systemError(ENOSYS, 'rename', name);
+    }
+    invoke(
+      'renameNoReplace',
+      [this.descriptor(), name, destination.descriptor(), destinationName, darwin ? 4 : 1],
+      name,
+    );
+  }
+
+  // linkat with no flags, so a final link is linked as itself rather than followed.
+  link(name: string, destination: RootDirectory, destinationName: string): void {
+    leaf(name);
+    leaf(destinationName);
+    if (!(destination instanceof PosixDirectory)) throw new Error('incompatible native directory');
+    ensure('linkat');
+    invoke('linkat', [this.descriptor(), name, destination.descriptor(), destinationName, 0], name);
   }
 
   remove(name: string, directory = false): void {
     leaf(name);
     invoke('unlinkat', [this.descriptor(), name, directory ? AT_REMOVEDIR : 0], name);
+  }
+
+  // fdopendir takes over the descriptor it's given, so it gets a fresh one for this folder, and reading never
+  // moves this handle. A struct dirent has d_type at 18 and a NUL-terminated d_name at 19 on Linux; Darwin's has
+  // d_namlen at 18, d_type at 20 and d_name at 21. An unknown type (0) is looked up without following links.
+  list(): RootEntry[] {
+    const fd = this.descriptor();
+    for (const name of ['fdopendir', 'readdir', 'closedir']) ensure(name);
+    const api = bindings();
+    const ffi = loadFFI();
+    const flags = constants.O_RDONLY | constants.O_DIRECTORY | O_CLOEXEC | constants.O_NONBLOCK;
+    const copy = Number(invoke('openat', [fd, '.', flags, 0], '.'));
+    const dir = api.calls.fdopendir(copy) as bigint;
+    if (!dir) {
+      const errno = api.errno();
+      invoke('close', [copy]);
+      throw systemError(errno, 'fdopendir');
+    }
+    const entries: RootEntry[] = [];
+    try {
+      for (;;) {
+        // readdir returns NULL both at the end and on an error, and only an error sets errno.
+        api.clearErrno();
+        const entry = api.calls.readdir(dir) as bigint;
+        if (!entry) {
+          const errno = api.errno();
+          if (errno) throw systemError(errno, 'readdir');
+          break;
+        }
+        const name = darwin
+          ? ffi.toBuffer(entry + 21n, ffi.getUint16(entry, 18)).toString()
+          : ffi.toString(entry + 19n);
+        if (name === '.' || name === '..') continue;
+        const type = ffi.getUint8(entry, darwin ? 20 : 18);
+        let kind: RootEntry['kind'] = type === 8 ? 'file' : type === 4 ? 'directory' : type === 10 ? 'link' : 'other';
+        if (!type) {
+          const info = stat(fd, name);
+          kind = info.isFile() ? 'file' : info.isDirectory() ? 'directory' : info.isSymbolicLink() ? 'link' : 'other';
+        }
+        entries.push({ name, kind });
+      }
+    } finally {
+      api.calls.closedir(dir);
+    }
+    return entries;
+  }
+
+  // fstatvfs on Linux: f_bsize at 0, f_frsize at 8, f_blocks, f_bfree and f_bavail at 16, 24 and 32, and f_flag
+  // at 72. Darwin's fstatfs: f_bsize (32 bits) at 0, f_blocks, f_bfree and f_bavail at 8, 16 and 24, and f_flags
+  // (32 bits) at 64. Read-only is ST_RDONLY or MNT_RDONLY, both 1.
+  space(): RootSpace {
+    ensure('space');
+    const data = Buffer.alloc(darwin ? 2168 : 112);
+    invoke('space', [this.descriptor(), data]);
+    const unit = darwin ? BigInt(data.readUInt32LE(0)) : data.readBigUInt64LE(8) || data.readBigUInt64LE(0);
+    const at = darwin ? 8 : 16;
+    const bytes = (offset: number) => {
+      const value = data.readBigUInt64LE(offset) * unit;
+      if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw systemError(darwin ? 84 : 75, 'statfs');
+      return Number(value);
+    };
+    const flags = darwin ? data.readUInt32LE(64) : Number(data.readBigUInt64LE(72) & 0xffffffffn);
+    return { total: bytes(at), free: bytes(at + 8), available: bytes(at + 16), readOnly: (flags & 1) === 1 };
   }
 }
 

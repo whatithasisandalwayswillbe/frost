@@ -40,14 +40,36 @@ export interface RootFile {
   close(): void;
 }
 
+// One folder entry and what it is, as the folder reports it. A link is never followed.
+export interface RootEntry {
+  name: string;
+  kind: 'file' | 'directory' | 'link' | 'other';
+}
+
+// The size and free space of the volume holding a folder, in bytes. available is what this account
+// may still use.
+export interface RootSpace {
+  total: number;
+  free: number;
+  available: number;
+  readOnly: boolean;
+}
+
 export interface RootDirectory extends RootFile {
   open(name: string, options: RootOpenOptions): RootFile;
   openDirectory(name: string, options?: { create?: boolean; exclusive?: boolean; mode?: number }): RootDirectory;
   lstat(name: string): RootStat;
   readlink(name: string): string;
   symlink(target: string, name: string, directory?: boolean): void;
-  rename(name: string, destination: RootDirectory, destinationName: string): void;
+  // Without replace, an existing destination fails with EEXIST, checked atomically by the filesystem. A
+  // filesystem that can't do that fails with EINVAL, ENOSYS or ENOTSUP.
+  rename(name: string, destination: RootDirectory, destinationName: string, replace?: boolean): void;
+  // Adds a hard link. An existing destination fails with EEXIST.
+  link(name: string, destination: RootDirectory, destinationName: string): void;
   remove(name: string, directory?: boolean): void;
+  // The entries other than . and .., in no particular order.
+  list(): RootEntry[];
+  space(): RootSpace;
 }
 
 export interface RootBackend {

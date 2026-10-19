@@ -7,8 +7,10 @@ import {
   leaf,
   type RootBackend,
   type RootDirectory,
+  type RootEntry,
   type RootFile,
   type RootOpenOptions,
+  type RootSpace,
   type RootStat,
 } from './fs-root-types.js';
 
@@ -38,6 +40,21 @@ const nt = ffi.dlopen('ntdll.dll', {
     'uint32',
   ),
   NtSetInformationFile: definition('uint32', 'pointer', 'pointer', 'pointer', 'uint32', 'uint32'),
+  NtQueryDirectoryFile: definition(
+    'uint32',
+    'pointer',
+    'pointer',
+    'pointer',
+    'pointer',
+    'pointer',
+    'pointer',
+    'uint32',
+    'uint32',
+    'uint8',
+    'pointer',
+    'uint8',
+  ),
+  NtQueryVolumeInformationFile: definition('uint32', 'pointer', 'pointer', 'pointer', 'uint32', 'uint32'),
   NtClose: definition('uint32', 'pointer'),
   RtlNtStatusToDosError: definition('uint32', 'uint32'),
 }).functions as Record<string, Call>;
@@ -667,36 +684,111 @@ class WindowsDirectory extends WindowsFile implements RootDirectory {
     }
   }
 
-  // Renames relative to the destination's handle. FILE_RENAME_INFORMATION: flags at 0,
-  // RootDirectory at 8, FileNameLength at 16, FileName at 20.
-  rename(name: string, destination: RootDirectory, destinationName: string): void {
-    leaf(name);
+  // FILE_RENAME_INFORMATION and FILE_LINK_INFORMATION share a layout: flags at 0, RootDirectory at 8,
+  // FileNameLength at 16 and FileName at 20. The new name is relative to the destination's handle.
+  private nameInfo(destination: RootDirectory, destinationName: string, flags: number): Buffer {
     leaf(destinationName);
     if (!(destination instanceof WindowsDirectory)) throw new Error('incompatible destination directory');
-    const destinationHandle = destination.handle;
-    const file = this.raw(name, deleteAccess);
     const encoded = Buffer.from(destinationName, 'utf16le');
-    if (encoded.length > 0xfffc) {
-      file.close();
-      throw error(206);
-    }
+    if (encoded.length > 0xfffc) throw error(206);
     const info = Buffer.alloc(24 + encoded.length);
-    info.writeUInt32LE(3);
-    info.writeBigUInt64LE(destinationHandle, 8);
+    info.writeUInt32LE(flags);
+    info.writeBigUInt64LE(destination.handle, 8);
     info.writeUInt32LE(encoded.length, 16);
     encoded.copy(info, 20);
+    return info;
+  }
+
+  // FileRenameInformationEx (65) with POSIX_SEMANTICS (2), plus REPLACE_IF_EXISTS (1) when replacing. A system
+  // without that class retries as FileRenameInformation (10). When replacing, any failure retries. Without
+  // replace, an existing name fails with STATUS_OBJECT_NAME_COLLISION, mapped to EEXIST, and only an unknown
+  // class or flag (invalid class, invalid parameter or not supported) retries.
+  rename(name: string, destination: RootDirectory, destinationName: string, replace = true): void {
+    leaf(name);
+    const info = this.nameInfo(destination, destinationName, replace ? 3 : 2);
+    const file = this.raw(name, deleteAccess);
     try {
-      // FileRenameInformationEx (65) with REPLACE_IF_EXISTS | POSIX_SEMANTICS (3). If that fails,
-      // retry as FileRenameInformation (10) with ReplaceIfExists set.
       let status = asNumber(nt.NtSetInformationFile(file['handle'], Buffer.alloc(16), info, info.length, 65));
-      if (status & 0x80000000) {
-        info.writeUInt32LE(1);
+      if (replace ? status & 0x80000000 : [0xc0000003, 0xc000000d, 0xc00000bb].includes(status)) {
+        info.writeUInt32LE(replace ? 1 : 0);
         status = asNumber(nt.NtSetInformationFile(file['handle'], Buffer.alloc(16), info, info.length, 10));
       }
       requireNT(status);
     } finally {
       file.close();
     }
+  }
+
+  // FileLinkInformation (11) with ReplaceIfExists clear, so an existing name fails with EEXIST.
+  link(name: string, destination: RootDirectory, destinationName: string): void {
+    leaf(name);
+    const info = this.nameInfo(destination, destinationName, 0);
+    const file = this.raw(name, readAttributes | writeAttributes);
+    try {
+      requireNT(asNumber(nt.NtSetInformationFile(file['handle'], Buffer.alloc(16), info, info.length, 11)));
+    } finally {
+      file.close();
+    }
+  }
+
+  // NtQueryDirectoryFile with FileDirectoryInformation (1) on a fresh handle, since the system keeps the scan
+  // position on the handle. Each entry has NextEntryOffset at 0, FileAttributes at 56, FileNameLength at 60
+  // and the UTF-16 name at 64. STATUS_NO_MORE_FILES, or STATUS_NO_SUCH_FILE for a folder with no entries at
+  // all, ends the scan. Any reparse point counts as a link.
+  list(): RootEntry[] {
+    const scan = create(this.handle, '', 1 | readAttributes, 1, 1, 0o600, 7, true);
+    const buffer = Buffer.alloc(64 * 1024);
+    checkedPointer(buffer, 8);
+    const entries: RootEntry[] = [];
+    try {
+      for (let first = 1; ; first = 0) {
+        const status = asNumber(
+          nt.NtQueryDirectoryFile(scan, null, null, null, Buffer.alloc(16), buffer, buffer.length, 1, 0, null, first),
+        );
+        if (status === 0x80000006 || status === 0xc000000f) break;
+        requireNT(status);
+        for (let at = 0; ;) {
+          const attributes = buffer.readUInt32LE(at + 56);
+          const name = buffer.toString('utf16le', at + 64, at + 64 + buffer.readUInt32LE(at + 60));
+          if (name !== '.' && name !== '..')
+            entries.push({
+              name,
+              kind: attributes & reparse ? 'link' : attributes & directoryAttribute ? 'directory' : 'file',
+            });
+          const next = buffer.readUInt32LE(at);
+          if (!next) break;
+          at += next;
+        }
+      }
+    } finally {
+      requireNT(asNumber(nt.NtClose(scan)));
+    }
+    return entries;
+  }
+
+  // FileFsFullSizeInformation (7): total, caller-available and actually free allocation units at 0, 8 and 16,
+  // then sectors per unit and bytes per sector at 24 and 28. FileFsAttributeInformation (5) has the volume's
+  // flags at 0, where FILE_READ_ONLY_VOLUME is 0x80000.
+  space(): RootSpace {
+    const size = Buffer.alloc(32);
+    requireNT(asNumber(nt.NtQueryVolumeInformationFile(this.handle, Buffer.alloc(16), size, size.length, 7)));
+    const unit = BigInt(size.readUInt32LE(24)) * BigInt(size.readUInt32LE(28));
+    const bytes = (offset: number) => {
+      const value = size.readBigInt64LE(offset) * unit;
+      if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER))
+        throw Object.assign(new Error('volume size is out of range'), { code: 'EOVERFLOW' });
+      return Number(value);
+    };
+    const attributes = Buffer.alloc(512);
+    const flagged = asNumber(
+      nt.NtQueryVolumeInformationFile(this.handle, Buffer.alloc(16), attributes, attributes.length, 5),
+    );
+    return {
+      total: bytes(0),
+      free: bytes(16),
+      available: bytes(8),
+      readOnly: !(flagged & 0x80000000) && !!(attributes.readUInt32LE(0) & 0x80000),
+    };
   }
 
   // FileDispositionInformationEx (64) with DELETE | POSIX_SEMANTICS | IGNORE_READONLY_ATTRIBUTE

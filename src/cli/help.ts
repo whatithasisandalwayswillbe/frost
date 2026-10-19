@@ -59,7 +59,7 @@ export function rootHelp(fmt: Format, configDir: string, width = 0): void {
   }
 
   fmt.write(
-    "   frost backs up your directories to S3-compatible storage or Permafrost.\n   Everything is encrypted on this machine before it's uploaded. Nobody else\n   can read your files, not the storage provider and not the frost authors.\n",
+    "   frost backs up your directories to Permafrost, S3-compatible storage, your\n   own server over SSH or a local drive. Everything is encrypted on this\n   machine before it's uploaded. Nobody else can read your files, not\n   whoever stores them and not the frost authors.\n",
   );
 
   const flags = [

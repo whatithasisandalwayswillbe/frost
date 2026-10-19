@@ -464,7 +464,9 @@ export const windowTop = (cur: number, n: number, h: number): number =>
 // Capitalises a message and adds a full stop unless it already ends with punctuation.
 export const sentence = (s: string): string => {
   s = s.trim();
-  return s ? s[0].toUpperCase() + s.slice(1) + (/[.?!]$/.test(s) ? '' : '.') : '';
+  if (!s) return '';
+  // frost stays lowercase, even at the start of a sentence.
+  return (/^frost\b/.test(s) ? s : s[0].toUpperCase() + s.slice(1)) + (/[.?!]$/.test(s) ? '' : '.');
 };
 
 // Shows the home folder as ~ and cuts long paths from the left. On Windows the home folder matches

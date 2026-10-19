@@ -40,7 +40,7 @@ export async function refreshSnapshots(e: EngineLike, signal?: AbortSignal) {
 export async function verify(e: EngineLike, n: number, full: boolean, signal?: AbortSignal): Promise<VerifyResult> {
   if (!e.manifest) throw new Error('verification needs a manifest');
   if (n < 0) throw new Error("verification sample can't be negative");
-  if (full || syncDue(e)) await syncChunks(e, signal);
+  if (full || (await syncDue(e, signal))) await syncChunks(e, signal);
 
   // A snapshot that disappeared counts as a failure once; refreshing forgets it.
   const { snaps, missing: gone } = await refreshSnapshots(e, signal);
