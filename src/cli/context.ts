@@ -28,7 +28,7 @@ import { rememberStorage, cantOpen } from './known.js';
 import { bootTime, rememberInstall, scheduledDue } from './runs.js';
 
 export const errNoKey = new Error('no key on this machine, run `frost init` or `frost key import`');
-export const errBusy = new Error("a backup or restore is already running, try again when it's done");
+export const errBusy = new Error('a backup or restore operation is already in progress; try again when it completes');
 
 // What a command gets from `openApp`. `close` releases the manifest and its lock.
 interface App {
@@ -300,7 +300,7 @@ export class Context {
         throw await cantOpen(`${backend} has no frost repository`, cfg.storage, backend, true);
       if (e === errWrongKey)
         throw await cantOpen(
-          `the key on this machine doesn't match the backups in ${backend} (check it with \`frost key verify\`)`,
+          `the local encryption key does not match the backups in ${backend} (verify using \`frost key verify\`)`,
           cfg.storage,
           backend,
           false,

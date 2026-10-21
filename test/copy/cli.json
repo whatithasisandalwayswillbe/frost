@@ -1,0 +1,202 @@
+[
+  {
+    "row": 57,
+    "pattern": "   frost backs up your directories to Permafrost, S3-compatible storage, your\n   own server over SSH or a local drive\\. Everything is encrypted on this\n   machine before it's uploaded\\. Nobody else can read your files, not\n   whoever stores them and not the frost authors\\.\n",
+    "replacement": "   frost backs up your directories to Permafrost, S3-compatible storage, your\n   own SSH server, or a local drive. All data is encrypted locally before\n   upload. Nobody else can read your files, including storage providers\n   and the creators of frost.\n"
+  },
+  {
+    "row": 236,
+    "pattern": "this frost was built from source, so it can't update itself\\. Rebuild it, or install a release with the installer: https://github\\.com/([^\\n]*?)#install",
+    "replacement": "this frost build comes from source and cannot update itself. Rebuild from source or reinstall via the official package: https://github.com/$1#install"
+  },
+  {
+    "row": 6,
+    "pattern": "Nothing has changed since snapshot ([^\\n]*?), saved ([^\\n]*?), so there's nothing to back up\\.",
+    "replacement": "No changes detected since snapshot $1 (saved $2); nothing to back up."
+  },
+  {
+    "row": 10,
+    "pattern": "Nothing has changed since snapshot ([^\\n]*?), saved ([^\\n]*?)\\.",
+    "replacement": "No changes detected since snapshot $1, saved $2."
+  },
+  {
+    "row": 19,
+    "pattern": "all the words are real, but they don't make a valid phrase\\. Check their order and spelling",
+    "replacement": "all words are valid individually, but together they do not form a valid recovery phrase; check their order and spelling"
+  },
+  {
+    "row": 99,
+    "pattern": "scheduled job is missing, run `frost init` or `frost config set schedule\\.enabled true`",
+    "replacement": "scheduled job missing; run `frost init` or `frost config set schedule.enabled true`"
+  },
+  {
+    "row": 60,
+    "pattern": "Preview your first backup with frost backup --dry-run, or start it with frost backup\\.",
+    "replacement": "Preview your first backup using 'frost backup --dry-run', or begin the backup with 'frost backup'."
+  },
+  {
+    "row": 100,
+    "pattern": "Run a new backup to re-upload anything missing, then `frost status --verify`\\.",
+    "replacement": "Run a new backup to upload missing data, followed by `frost status --verify`."
+  },
+  {
+    "row": 13,
+    "pattern": "([^\\n]*?) didn't wait for you\\. Save and close config\\.toml, then press enter\\.",
+    "replacement": "$1 did not wait for editing to finish. Save and close config.toml, then press Enter."
+  },
+  {
+    "row": 68,
+    "pattern": "Nobody can recover them for you: not whoever stores your backups, not us\\.",
+    "replacement": "Your storage provider and the developers cannot recover these words for you."
+  },
+  {
+    "row": 82,
+    "pattern": "Make sure nobody's looking at your screen and you're not screen sharing\\.",
+    "replacement": "Ensure your screen is private and not being shared before proceeding."
+  },
+  {
+    "row": 67,
+    "pattern": "They're the only way to restore your files if this machine is lost\\.",
+    "replacement": "This phrase is required to restore your files if this machine is lost or replaced."
+  },
+  {
+    "row": 50,
+    "pattern": "back up this directory instead of the configured ones \\(repeatable\\)",
+    "replacement": "back up the specified directory instead of configured directories (repeatable)"
+  },
+  {
+    "row": 54,
+    "pattern": "restore over the originals, replacing what's there \\(asks first\\)",
+    "replacement": "restore and overwrite original files (asks first)"
+  },
+  {
+    "row": 15,
+    "pattern": "([^\\n]*?) was already set to that, but the job was missing\\.",
+    "replacement": "$1 was already set to this value, but the scheduled job was missing."
+  },
+  {
+    "row": 81,
+    "pattern": "Anyone who sees this phrase can decrypt all of your backups\\.",
+    "replacement": "Anyone with access to this recovery phrase can decrypt your backups."
+  },
+  {
+    "row": 94,
+    "pattern": "choose where to restore: --beside, --to <dir> or --overwrite",
+    "replacement": "specify a restore destination using --beside, --to <dir>, or --overwrite"
+  },
+  {
+    "row": 93,
+    "pattern": "say which snapshot to restore, e\\.g\\. `frost restore latest`",
+    "replacement": "specify the target snapshot to restore, e.g., `frost restore latest`"
+  },
+  {
+    "row": 66,
+    "pattern": "Write these 24 words down and keep them somewhere safe\\.",
+    "replacement": "Write down these 24 words and store them in a secure location."
+  },
+  {
+    "row": 49,
+    "pattern": "show what would be uploaded without uploading anything",
+    "replacement": "preview changes without transferring data"
+  },
+  {
+    "row": 47,
+    "pattern": "Set up frost: what to back up, where, and how often",
+    "replacement": "Set up frost: choose what to back up, where to store it, and how often"
+  },
+  {
+    "row": 12,
+    "pattern": "Save your changes, then close ([^\\n]*?) to carry on\\.",
+    "replacement": "Save your changes, then close $1 to continue."
+  },
+  {
+    "row": 51,
+    "pattern": "also skip files matching this pattern \\(repeatable\\)",
+    "replacement": "also exclude files matching this pattern (repeatable)"
+  },
+  {
+    "row": 52,
+    "pattern": "restore into a new folder next to the originals",
+    "replacement": "restore files to a new directory alongside original files"
+  },
+  {
+    "row": 53,
+    "pattern": "restore into a new folder inside this directory",
+    "replacement": "restore files to a new folder within the specified directory"
+  },
+  {
+    "row": 48,
+    "pattern": "Read or change settings without rerunning init",
+    "replacement": "View or update configuration options without rerunning init"
+  },
+  {
+    "row": 7,
+    "pattern": "Everything in these files is already stored\\.",
+    "replacement": "All content in these files is already backed up."
+  },
+  {
+    "row": 55,
+    "pattern": "list every snapshot, not just the latest 10",
+    "replacement": "list all snapshots instead of only the 10 most recent"
+  },
+  {
+    "row": 4,
+    "pattern": "If one moved, update it with `frost init`\\.",
+    "replacement": "If a path has moved, update it by running `frost init`."
+  },
+  {
+    "row": 69,
+    "pattern": "Press enter once you've written them down\\.",
+    "replacement": "Press Enter once you have saved them securely."
+  },
+  {
+    "row": 56,
+    "pattern": "only say whether there's a newer release",
+    "replacement": "check if a newer release is available"
+  },
+  {
+    "row": 8,
+    "pattern": "Run without --dry-run to back up\\.",
+    "replacement": "Run without the --dry-run flag to perform the backup."
+  },
+  {
+    "row": 70,
+    "pattern": "To check: what's word #([^\\n]*?)\\?",
+    "replacement": "Verification step: enter word #$1:"
+  },
+  {
+    "row": 61,
+    "pattern": "Where should backups go\\?",
+    "replacement": "Where would you like to store your backups?"
+  },
+  {
+    "row": 5,
+    "pattern": "(?<!\\d)1 files kept changing while they were read, so the snapshot has their previous copy:",
+    "replacement": "1 file continued changing while being read, so the snapshot saved its previous version:"
+  },
+  {
+    "row": 5,
+    "pattern": "(\\d+) files kept changing while they were read, so the snapshot has their previous copy:",
+    "replacement": "$1 files continued changing while being read, so the snapshot saved their previous versions:"
+  },
+  {
+    "row": 17,
+    "pattern": "that's 1 words, a recovery phrase has 24",
+    "replacement": "entered 1 word, but a recovery phrase must contain exactly 24 words"
+  },
+  {
+    "row": 17,
+    "pattern": "that's (\\d+) words, a recovery phrase has 24",
+    "replacement": "entered $1 words, but a recovery phrase must contain exactly 24 words"
+  },
+  {
+    "row": 8,
+    "pattern": "Run without ((?:\\u001b\\[[0-9;]*m)*--dry-run(?:\\u001b\\[[0-9;]*m)*) to back up\\.",
+    "replacement": "Run without the $1 flag to perform the backup."
+  },
+  {
+    "row": 70,
+    "pattern": "And word #(\\d+)\\?",
+    "replacement": "Enter word #$1:"
+  }
+]

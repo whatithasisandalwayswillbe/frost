@@ -21,11 +21,11 @@ import { printable, tildify } from './format.js';
 // The closing line after a successful setup.
 export const setUp = (ctx: Context) =>
   ctx.fmt.good('frost is set up.') +
-  ' Preview your first backup with ' +
+  " Preview your first backup using '" +
   ctx.fmt.bold('frost backup --dry-run') +
-  ', or start it with ' +
+  "', or begin the backup with '" +
   ctx.fmt.bold('frost backup') +
-  '.';
+  "'.";
 
 // Saves a finished setup. It creates the repository if the storage is new, writes config.toml and the key
 // file, then installs the scheduled job. A schedule that can't be installed shows in the returned rows
@@ -100,7 +100,11 @@ async function askStorage(ctx: Context, p: Prompter, cfg: config.Config): Promis
     'Local drive ' + f.dim('(USB or internal disk)'),
   ];
   const kinds = ['permafrost', 's3', 'sftp', 'local'];
-  const i = await p.choose(f.bold('Where should backups go?'), options, kinds.indexOf(cfg.storage.backend));
+  const i = await p.choose(
+    f.bold('Where would you like to store your backups?'),
+    options,
+    kinds.indexOf(cfg.storage.backend),
+  );
   const s = cfg.storage;
 
   // The answers follow kinds: 0 is Permafrost, 1 is S3, 2 is a server over SSH and 3 is a drive.
@@ -134,7 +138,7 @@ async function askStorage(ctx: Context, p: Prompter, cfg: config.Config): Promis
       await ctx.hooks.openBrowser(permafrostKeyPage).catch(() => {});
       p.line(
         '  ' +
-          f.dim('Get one at') +
+          f.dim('Obtain a key at') +
           ' ' +
           f.bold(permafrostKeyPage.replace('https://', '')) +
           f.dim(', then paste it below.'),
@@ -173,10 +177,10 @@ async function addKey(ctx: Context, p: Prompter, s: config.Storage): Promise<{ a
     }
     return { acceptNewHostKey: false };
   }
-  p.line('  Add this line to ~/.ssh/authorized_keys on ' + printable(s.sftp.host) + ':');
+  p.line('  Add the following line to ~/.ssh/authorized_keys on ' + printable(s.sftp.host) + ':');
   p.line('  ' + f.bold(printable(authorizedLine(await ctx.hooks.sshKey()))));
   p.line(f.dim("  It's also in " + printable(keyFileShown()) + '.'));
-  await p.ask(f.dim("Press enter once it's there."));
+  await p.ask(f.dim('Press Enter once added.'));
   return { acceptNewHostKey: true };
 }
 
@@ -203,17 +207,17 @@ async function showNewPhrase(ctx: Context, p: Prompter, key: Key): Promise<void>
   p.gap();
   p.line(phraseGrid(f, key.phrase()));
   p.gap();
-  p.line(f.bold('Write these 24 words down and keep them somewhere safe.'));
-  p.line("They're the only way to restore your files if this machine is lost.");
-  p.line('Nobody can recover them for you: not whoever stores your backups, not us.');
+  p.line(f.bold('Write down these 24 words and store them in a secure location.'));
+  p.line('This phrase is required to restore your files if this machine is lost or replaced.');
+  p.line('Your storage provider and the developers cannot recover these words for you.');
   p.gap();
 
   const words = key.phrase().split(' ');
   for (;;) {
-    await p.ask(f.dim("Press enter once you've written them down."));
+    await p.ask(f.dim('Press Enter once you have saved them securely.'));
     const [i, j] = ctx.hooks.pickWords();
-    const a = await p.ask(`To check: what's word #${i + 1}?`);
-    const b = await p.ask(`And word #${j + 1}?`);
+    const a = await p.ask(`Verification step: enter word #${i + 1}:`);
+    const b = await p.ask(`Enter word #${j + 1}:`);
     if (a.toLowerCase() === words[i] && b.toLowerCase() === words[j]) {
       p.ok('Correct.');
       return;
@@ -245,10 +249,10 @@ async function promptKey(
   if (state === RepoState.NeedsPhrase || state === RepoState.LocalWrong) {
     p.gap();
     if (state === RepoState.NeedsPhrase)
-      p.line('This storage already has frost backups. Enter the recovery phrase to connect.');
+      p.line('Existing frost backups detected in this storage location. Enter the recovery phrase to connect.');
     else {
-      p.line('This storage has backups made with a different key than the one on this machine.');
-      p.line('Enter the recovery phrase for these backups, and frost will use that key here instead.');
+      p.line('This storage location contains backups created with a different key from the one on this machine.');
+      p.line('Enter the recovery phrase for these backups to configure frost to use that key locally.');
     }
     return { key: await askPhraseFor(ctx, p, b), newRepo: false };
   }
@@ -260,14 +264,14 @@ async function promptKey(
     if (k.where && k.where !== location(b)) {
       p.gap();
       p.warn(
-        `There are no backups in ${printable(String(b))} yet. This machine's backups are in ${printable(k.shown ?? '')}.`,
+        `No backups found in ${printable(String(b))}. This machine's active backups are located in ${printable(k.shown ?? '')}.`,
       );
       p.line(
-        'They stay there, but frost will only show the ones made here from now on, and the first backup uploads everything again.',
+        'Existing backups will remain untouched, but frost will now only manage snapshots from this location. The initial backup will upload the selected data again.',
       );
-      if (!(await p.yesNo('Start a separate set of backups here?', false)))
+      if (!(await p.yesNo('Initialize a separate set of backups at this location?', false)))
         throw new Error(
-          'nothing was changed. To keep using your backups, run `frost init` again and point it at ' + k.shown,
+          'nothing was changed. To continue using existing backups, run `frost init` and point to ' + k.shown,
         );
     }
     return { key: local, newRepo: true };
@@ -301,7 +305,7 @@ export async function runInit(ctx: Context): Promise<void> {
   const p = ctx.prompt(),
     f = ctx.fmt;
   p.open('frost setup');
-  if (existing) p.line(f.dim('Existing config found. Press enter to keep a value.'));
+  if (existing) p.line(f.dim('Existing config found. Press Enter to retain the current value.'));
   p.gap();
 
   // Ask for storage until it connects. A self-hosted server that won't take frost's key yet gets the key
@@ -354,7 +358,7 @@ export async function runInit(ctx: Context): Promise<void> {
     const missing = missingDirs(paths);
     if (!missing.length) break;
     p.warn(f.caution('not found: ' + missing.map(printable).join(', ')));
-    if (await p.yesNo("  Add anyway? They're skipped until they exist.", false)) break;
+    if (await p.yesNo('  Add anyway? Missing paths will be skipped until they become available.', false)) break;
   }
 
   // Ask for exclude patterns until they all compile.
@@ -369,7 +373,7 @@ export async function runInit(ctx: Context): Promise<void> {
       }
     });
     if (!bad) break;
-    p.warn(f.caution(JSON.stringify(bad) + " isn't a valid pattern, check its brackets"));
+    p.warn(f.caution(JSON.stringify(bad) + ' is not a valid pattern; check matching brackets'));
   }
   p.gap();
 

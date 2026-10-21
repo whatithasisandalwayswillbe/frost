@@ -153,7 +153,13 @@ export function compressionData(): Map<string, Buffer> {
     },
   ]) as Buffer;
   const zip = writeZip([
-    { name: 'source.js', mode: 0o644, data: code },
+    // Keep this ratio sample fixed. Changes to error wording in the live source can change which
+    // compression strategy wins, even though neither the codec nor its compatibility changed.
+    {
+      name: 'source.js',
+      mode: 0o644,
+      data: readFileSync(new URL('../../../test/copy/manifest-compression.fixture', import.meta.url)),
+    },
     { name: 'data.xml', mode: 0o644, data: xml },
   ]) as Buffer;
 

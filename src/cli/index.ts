@@ -211,8 +211,8 @@ function plainError(err: unknown): unknown {
   if (err instanceof APIError && err.status === 401)
     return new Error(
       'the Permafrost access key was rejected' +
-        (err.detail ? ': ' + err.detail + '.' : ', it may be wrong or expired.') +
-        ' Run `frost init` and set up storage again to get a working one',
+        (err.detail ? ': ' + err.detail + '.' : ' (it may be invalid or expired).') +
+        ' Run `frost init` to reconfigure storage with a valid key',
     );
   if ((err as Error)?.cause) {
     const mapped = plainError((err as Error).cause);

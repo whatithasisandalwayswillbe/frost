@@ -263,7 +263,7 @@ export function parseTime(selector: string, now: Date): Date {
       return result;
   }
   throw new Error(
-    `can't read ${JSON.stringify(value)} as a snapshot ID or time (try "latest", "3 days ago" or "2026-09-20")`,
+    `cannot parse ${JSON.stringify(value)} as a snapshot ID or timestamp (try "latest", "3 days ago", or "2026-09-20")`,
   );
 }
 
@@ -279,7 +279,7 @@ export function resolve(snapshots: Snapshot[], selector = '', now = new Date()):
   const prefix = snapshots.filter(s => s.id.startsWith(value));
   if (prefix.length === 1) return prefix[0];
   if (prefix.length > 1)
-    throw new Error(`${JSON.stringify(value)} matches ${prefix.length} snapshots, use more of the ID`);
+    throw new Error(`${JSON.stringify(value)} matches ${prefix.length} snapshots; provide additional ID characters`);
 
   // Day and minute selectors also cover the nanoseconds inside their last millisecond.
   const at = parseTime(value, now);

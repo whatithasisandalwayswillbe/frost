@@ -143,7 +143,7 @@ export function classify(stderr: string, exit: number | null, host: string): SSH
   const last = text.split(/\r?\n/).filter(Boolean).pop() ?? '';
   if (/REMOTE HOST IDENTIFICATION HAS CHANGED|host key for .* has changed/i.test(text))
     return new SSHError(
-      `the server's SSH host key has changed since it was trusted, so frost won't connect. If the server was reinstalled, remove its old key with \`ssh-keygen -R ${hostName(host)}\``,
+      `the server's SSH host key has changed since last trusted; connection aborted. If the host was reinstalled, purge old key record using \`ssh-keygen -R ${hostName(host)}\``,
       'hostkey',
     );
   if (/Host key verification failed|No \S+ host key is known/i.test(text))
@@ -325,7 +325,7 @@ class Session {
       if (length < 1 || length > maxPacket) {
         this.#fail(
           new SSHError(
-            'the server sent text before SFTP started. A login script there probably prints something, which breaks SFTP',
+            'server returned text before opening SFTP subsystem; remote startup shell scripts producing output will break SFTP initialization',
             'garbled',
           ),
         );
@@ -691,7 +691,7 @@ export class SFTPBackend implements Backend {
         await access(this.options.identity);
       } catch {
         throw new SSHError(
-          `frost's SSH key is missing (${this.options.identity}). Run \`frost init\` to make a new one`,
+          `frost's SSH key was not found (${this.options.identity}). Run \`frost init\` to regenerate it`,
           'nokey',
         );
       }
@@ -786,7 +786,7 @@ export class SFTPBackend implements Backend {
       // A conditional create needs hard links, and fails closed without them.
       if (exclusive && !session.extensions.has('hardlink@openssh.com'))
         throw new UnsafeFolderError(
-          `the server can't make hard links over SFTP, which frost needs to create files safely. It needs an OpenSSH server`,
+          'server does not support hard link creation via SFTP. frost requires hard links for safe atomic writes (OpenSSH server recommended)',
         );
       const temp = await this.#writeTemp(session, key, data, signal);
       const remove = () => session.simple(fxp.remove, [str(temp)], 'remove').catch(() => {});
@@ -818,7 +818,7 @@ export class SFTPBackend implements Backend {
       if (await session.exists(target, signal)) throw errExists;
       if (error.status !== fx.failure && error.status !== fx.opUnsupported) throw error;
       throw new UnsafeFolderError(
-        `the server can't make hard links in ${this.#root}, which frost needs to create files safely. Use a folder on a filesystem with hard links, like ext4, Btrfs, XFS, ZFS, APFS or NTFS`,
+        `the server cannot create hard links in ${this.#root}. frost requires them to create backup metadata safely. Use a filesystem that supports hard links, such as ext4, Btrfs, XFS, ZFS, APFS, or NTFS`,
         { cause: error },
       );
     }

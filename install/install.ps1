@@ -145,7 +145,7 @@ try {
     } catch {
       $tag = ''
     }
-    if (-not $tag.StartsWith('v')) { throw "couldn't find the latest release (set FROST_VERSION to pick one)" }
+    if (-not $tag.StartsWith('v')) { throw "could not determine latest release version (set FROST_VERSION environment variable to select manually)" }
     $tag
   }
 
@@ -171,7 +171,7 @@ try {
 
   $tmp = $null
   try {
-    if ($env:OS -ne 'Windows_NT') { throw 'install.ps1 is for Windows. On macOS and Linux, use install.sh' }
+    if ($env:OS -ne 'Windows_NT') { throw 'install.ps1 is target-specific to Windows. Use install.sh on macOS or Linux environments' }
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
     # Platform. The registry names the processor itself, so an ARM64 PC gets the arm64 build even when this
@@ -238,13 +238,13 @@ try {
       $signer.GetNameInfo('SimpleName', $false) -cne 'OpenJS Foundation' -or
       $signer.Subject -cnotmatch '(^|, )O=OpenJS Foundation(,|$)'
     ) {
-      throw "the runtime in $archive isn't signed by the OpenJS Foundation. Don't install this."
+      throw "runtime inside $archive lacks valid OpenJS Foundation signature; installation aborted"
     }
     $verify = Join-Path $check 'verify.cjs'
     [IO.File]::WriteAllText($verify, $Verifier)
     $result = Invoke-Runtime $checkNode @($verify, $ReleaseKey, $sums, $signature)
     if ($LASTEXITCODE -ne 0 -or "$result" -cne 'ok') {
-      throw "checksums.txt isn't signed by the frost release key. Don't install this."
+      throw "checksums.txt signature does not match official frost release key; installation aborted"
     }
     Write-Host 'Signature ok'
     Write-Host 'Checksum ok'
@@ -295,12 +295,12 @@ try {
           [Environment]::SetEnvironmentVariable('FROST_INSTALL_REFRESH', '1', 'User')
           [Environment]::SetEnvironmentVariable('FROST_INSTALL_REFRESH', $null, 'User')
           Write-Host ''
-          Write-Host "Added $dir to your PATH. Other open terminals need restarting to see it."
+          Write-Host "Added $dir to your PATH. Restart existing terminals to use the updated PATH."
         }
         $env:Path = $dir + ';' + $env:Path
       } else {
         Write-Host ''
-        Write-Host "$dir isn't on your PATH yet. Add it to the Path variable in your user's environment variables."
+        Write-Host "$dir is not currently in PATH. Add it to your user Path environment variable."
       }
     }
 

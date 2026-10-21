@@ -8,7 +8,7 @@ import * as update from '../platform/update.js';
 import { Context } from './context.js';
 import { ago, Block, humanBytes, humanCount, inTime, plural, printable, when } from './format.js';
 import { missingList, readUsage, usageNotice } from './backup.js';
-import { loadKnown, movable, moveHint, StorageError } from './known.js';
+import { loadKnown, movable, StorageError } from './known.js';
 import { updateSummary, updateStatePath } from './update.js';
 import { loadRuns, nextBackup } from './runs.js';
 
@@ -28,10 +28,7 @@ async function nextRun(ctx: Context, cfg: config.Config): Promise<[string, numbe
     return [ctx.fmt.error((err as Error).message), 2];
   }
   if (!(await ctx.hooks.scheduleInstalled()))
-    return [
-      ctx.fmt.caution('scheduled job is missing, run `frost init` or `frost config set schedule.enabled true`'),
-      1,
-    ];
+    return [ctx.fmt.caution('scheduled job missing; run `frost init` or `frost config set schedule.enabled true`'), 1];
   const how = ctx.fmt.dim('  ' + cfg.schedule.every + ' via ' + (await ctx.hooks.scheduleKind()));
   const now = ctx.hooks.clock();
   const next = nextBackup(times, cfg.schedule.catch_up, await loadRuns(), now);
@@ -166,7 +163,7 @@ export async function runStatus(ctx: Context, verify: boolean, all: boolean): Pr
           ago(v.time) +
           v.failures.map(s => '\n' + printable(s)).join('') +
           '\n' +
-          f.dim('Run a new backup to re-upload anything missing, then `frost status --verify`.'),
+          f.dim('Run a new backup to upload missing data, followed by `frost status --verify`.'),
       );
 
     const [updates, warn] = updateSummary(a.cfg, await update.loadState(updateStatePath()), ctx.version);
@@ -193,7 +190,12 @@ export async function runStatus(ctx: Context, verify: boolean, all: boolean): Pr
         'missing',
         f.caution(goneText(missing) + '.') +
           (movable(a.cfg.storage)
-            ? '\n' + f.dim('If you moved your backups, ' + moveHint(String(e.repo.backend)) + '.')
+            ? '\n' +
+              f.dim(
+                'If you moved your backup repository, ensure all components (frost.repo, chunks/, snapshots/, and trees/) are transferred to ' +
+                  String(e.repo.backend) +
+                  '.',
+              )
             : ''),
       );
 

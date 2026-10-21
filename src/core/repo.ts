@@ -138,7 +138,9 @@ export class Repo {
   // frost.repo mean something is wrong, so init refuses to write over them.
   static async init(backend: Backend, key: Key, signal?: AbortSignal): Promise<Repo> {
     if (await Repo.exists(backend, signal))
-      throw new Error(`${backend} already has a frost repository (use \`frost key import\` to connect to it)`);
+      throw new Error(
+        `${backend} already contains a frost repository (run \`frost key import\` with its recovery phrase to decrypt it)`,
+      );
     const keys = await backend.list('', signal);
     if (keys.some(value => /^(chunks|snapshots|trees)\//.test(value)))
       throw new Error('backup objects exist without frost.repo; refusing to initialize over them');

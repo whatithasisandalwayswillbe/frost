@@ -129,14 +129,14 @@ test('Permafrost account access opens only from help for the default service', a
   m.deps.canOpen = () => false;
   await m.onKey('p');
   assert.equal(opened.length, 1);
-  assert.match(m.err!.message, /Open https:\/\/getfro.st\/perma\/portal in your browser/);
+  assert.match(m.err!.message, /Open https:\/\/getfro.st\/perma\/portal in a web browser/);
   m.err = undefined;
   m.deps.canOpen = () => true;
   m.deps.openBrowser = async () => {
     throw new Error('unavailable');
   };
   await m.onKey('p');
-  assert.match(m.err!.message, /Open https:\/\/getfro.st\/perma\/portal in your browser/);
+  assert.match(m.err!.message, /Open https:\/\/getfro.st\/perma\/portal in a web browser/);
   m.err = undefined;
   for (const w of [1, 20, 40, 76]) {
     m.resize(w, 24);
@@ -360,7 +360,7 @@ test('restore checks a taken folder again, opens only successful files, and clos
   m.rs.beside = '/old';
   await m.onKey('enter');
   assert.equal(m.rs.phase, 'confirm');
-  assert.match(m.flash, /Review the new destination/);
+  assert.match(m.flash, /Review the new path/);
 
   // The restore succeeds, and a failure to open the folder only shows as a flash.
   await m.onKey('enter');
@@ -398,7 +398,7 @@ test('canceled and stale picker completions cannot change restore state', async 
   m.rs.dest = 1;
   await m.onKey('enter');
   assert.equal(m.rs.phase, 'picking');
-  assert.match(strip(m.view()), /Pick restore location in the window that's just opened\./);
+  assert.match(strip(m.view()), /Select a restore location in the newly opened window\./);
 
   // Switching to typing cancels the picker, and its late answer is ignored.
   await m.onKey('t');
@@ -415,7 +415,7 @@ test('canceled and stale picker completions cannot change restore state', async 
 
   await m.onKey('ctrl+u');
   await m.onKey('enter');
-  assert.equal(m.rs.inputErr, 'Type the folder to restore into.');
+  assert.equal(m.rs.inputErr, 'Enter the directory path to restore files into.');
 
   await m.onKey({ key: 'text', text: dir });
   await m.onKey('enter');
@@ -594,7 +594,7 @@ test('setup resumes local keys, retries wrong phrases, keeps secrets covered, an
 
   await n.onKey({ key: 'text', text: 'one' });
   await n.onKey('enter');
-  assert.match(n.err, /1 words/);
+  assert.match(n.err, /Entered 1 word; valid recovery phrases require 24 words\./);
   await n.onKey('ctrl+u');
   await n.onKey({ key: 'text', text: Array(24).fill('bad').join(' ') });
   await n.onKey('enter');
@@ -651,11 +651,11 @@ test('setup reads SSH addresses with ports, aliases and IPv6, and describes the 
   assert.equal(joinAddress('nas', 0), 'nas');
 
   assert.equal(checkAddress('me@nas.local:2222'), '');
-  assert.match(checkAddress('me nas'), /no spaces/);
-  assert.match(checkAddress('-oProxyCommand=sh'), /like me@nas.local/);
-  assert.match(checkAddress('nas:70000'), /1 to 65535/);
-  assert.match(checkAddress('nas:0'), /1 to 65535/);
-  assert.match(checkDrivePath('relative/frost'), /full path/);
+  assert.match(checkAddress('me nas'), /must not contain spaces/);
+  assert.match(checkAddress('-oProxyCommand=sh'), /e\.g\., me@nas\.local/);
+  assert.match(checkAddress('nas:70000'), /between 1 and 65535/);
+  assert.match(checkAddress('nas:0'), /between 1 and 65535/);
+  assert.match(checkDrivePath('relative/frost'), /absolute path/);
   assert.equal(checkDrivePath(path.join(os.tmpdir(), 'frost')), '');
 
   const s = defaultConfig().storage;
@@ -754,7 +754,7 @@ test('setup adds frost SSH key to a self-hosted server for you or by hand', asyn
   await m.onKey('3');
   await m.onKey('enter');
   assert.equal(m.step, 'details');
-  assert.match(strip(m.view()), /Self-hosted {2}1 of 2[\s\S]*What's the server's SSH address\?/);
+  assert.match(strip(m.view()), /Self-hosted {2}1 of 2[\s\S]*What is the server SSH address\?/);
   await m.onKey({ key: 'text', text: 'me@nas.local:2222' });
   await m.onKey('enter');
   assert.match(strip(m.view()), /Self-hosted {2}2 of 2[\s\S]*Which folder on the server\?[\s\S]*frost/);
@@ -824,10 +824,10 @@ test('setup asks local drive storage for a full path', async () => {
   await m.onKey('enter');
   await m.onKey('4');
   await m.onKey('enter');
-  assert.match(strip(m.view()), /Local drive[\s\S]*Which folder should hold your backups\?/);
+  assert.match(strip(m.view()), /Local drive[\s\S]*Which folder should store your backups\?/);
   await m.onKey({ key: 'text', text: 'backups' });
   await m.onKey('enter');
-  assert.match(m.err, /^Type a full path, like /);
+  assert.match(m.err, /^Enter an absolute path \(e\.g\., /);
   assert.equal(tried, undefined);
   await m.onKey('ctrl+u');
   const folder = path.join(os.tmpdir(), 'drive', 'frost');
@@ -882,7 +882,10 @@ test('setup opens the key page for a new Permafrost key and asks for it', async 
   await m.onKey('enter');
   assert.deepEqual(opened, ['https://getfro.st/perma']);
   assert.equal(m.step, 'details');
-  assert.match(strip(m.view()), /Get one at getfro\.st\/perma, then paste it here\./);
+  assert.match(
+    strip(m.view()).replace(/\s+/g, ' '),
+    /Obtain an access key at getfro\.st\/perma, then paste it below\./,
+  );
 
   await m.onKey('esc');
   assert.equal(m.step, 'permaChoice');

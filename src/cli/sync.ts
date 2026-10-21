@@ -48,8 +48,8 @@ export function jobNote(cfg: config.Config, applied = true): string {
   if (applied)
     return cfg.schedule.enabled ? 'Scheduled job updated: ' + cfg.schedule.every + '.' : 'Scheduled job removed.';
   return cfg.schedule.enabled
-    ? 'The scheduled job updates once the running backup finishes.'
-    : 'The scheduled job is removed once the running backup finishes.';
+    ? 'The scheduled job will update after the active backup process completes.'
+    : 'The scheduled job will be removed after the active backup process completes.';
 }
 
 // Updates the job when config.toml asks for a different one than frost installed. Returns the line to print,

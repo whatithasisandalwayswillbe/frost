@@ -230,9 +230,10 @@ export class APIError extends Error {
   ) {
     super(
       status === 401
-        ? "permafrost didn't accept the access key" +
-            (detail ? ': ' + detail : ', it may be wrong or expired') +
-            ' (run `frost init` to set it up again)'
+        ? 'the Permafrost access key was rejected' +
+            (detail
+              ? ': ' + detail + ' (run `frost init` to reconfigure storage)'
+              : ' (it may be invalid or expired; run `frost init` to reconfigure storage)')
         : `permafrost: ${message} (${status} ${code})`,
     );
   }
@@ -587,7 +588,9 @@ export class S3Backend implements Backend {
       this.#base.search ||
       this.#base.hash
     )
-      throw new Error('s3: endpoint must be an http or https host URL without credentials, a path, query or fragment');
+      throw new Error(
+        's3: endpoint must be an http:// or https:// URL containing a host and optional port only (no user info, path, query, or fragment)',
+      );
     this.#prefix = config.prefix.replace(/^\/+|\/+$/g, '');
     if (this.#prefix) this.#prefix += '/';
     this.#region = config.region;

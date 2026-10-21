@@ -29,7 +29,7 @@ import {
 
 // The browser shows this when a restore stops early. Running the same restore again resumes in the same folder.
 export const carryOn =
-  "What's restored so far was kept. Restore the same files to the same place again and frost carries on where it stopped.";
+  'Completed files and unfinished restore data were preserved. Restore the same selection to the same location to resume progress.';
 
 let probingStartFolder = false;
 
@@ -322,12 +322,12 @@ export function restoreContent(m: BrowserModel): string {
 
     if (rs.dest === 2) {
       lines.push(fill(w));
-      paragraph('caution', 'Files at the original paths will be overwritten.');
+      paragraph('caution', 'Existing files at original locations will be overwritten.');
     }
   } else if (rs.phase === 'picking') {
     lines.push(line(style('bold', 'Choose a folder')), fill(w));
-    paragraph('text', "Pick restore location in the window that's just opened.");
-    paragraph('dim', 'frost makes a new ' + restoreFolderName(rs.snap!.id) + ' folder inside it.');
+    paragraph('text', 'Select a restore location in the newly opened window.');
+    paragraph('dim', 'frost will create a new directory named ' + restoreFolderName(rs.snap!.id) + ' inside it.');
   } else if (rs.phase === 'ready') {
     paragraph('bold', restoreTitle(rs));
     paragraph('dim', 'into a new folder, so nothing already there is touched');
@@ -346,7 +346,7 @@ export function restoreContent(m: BrowserModel): string {
     lines.push(line(row));
   } else if (rs.phase === 'typing') {
     lines.push(line(style('bold', 'Type a folder')));
-    paragraph('dim', 'frost makes a new ' + restoreFolderName(rs.snap!.id) + ' folder inside it.');
+    paragraph('dim', 'frost will create a new directory named ' + restoreFolderName(rs.snap!.id) + ' inside it.');
     lines.push(fill(w), inputBox(rs.input.fields[0], false, true, w));
     if (rs.inputErr) paragraph('error', rs.inputErr);
   } else if (rs.phase === 'running') {
@@ -384,7 +384,10 @@ export function restoreContent(m: BrowserModel): string {
       if (to) lines.push(to);
       if (rs.res.unfinished) paragraph('caution', carryOn);
       else if (rs.res.files > 0)
-        paragraph('caution', 'Earlier changes remain. A file may have been written before a metadata error.');
+        paragraph(
+          'caution',
+          'Earlier changes were retained on disk. A file may have been written before its metadata could be applied.',
+        );
       lines.push(fill(w));
       paragraph('text', rs.err.message);
     } else {
@@ -393,7 +396,7 @@ export function restoreContent(m: BrowserModel): string {
         to,
         fill(w),
       );
-      paragraph('dim', 'Every chunk was decrypted and checked against its hash.');
+      paragraph('dim', 'All data chunks were successfully decrypted and validated against cryptographic hashes.');
     }
   }
 

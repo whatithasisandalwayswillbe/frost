@@ -147,12 +147,18 @@ test('SFTP backend never creates a missing folder except through prepare', async
 test('SFTP conditional creates need hard links and fail closed without them', async t => {
   const missing = await setup(t, { extensions: allExtensions.filter(e => e !== 'hardlink@openssh.com') });
   await missing.backend.prepare();
-  await assert.rejects(missing.backend.putNew('frost.repo', Buffer.from('x')), /can't make hard links over SFTP/);
+  await assert.rejects(
+    missing.backend.putNew('frost.repo', Buffer.from('x')),
+    /does not support hard link creation via SFTP/,
+  );
   assert.deepEqual(files(missing.root), []);
 
   const unsupported = await setup(t, { hardlinkStatus: 4 });
   await unsupported.backend.prepare();
-  await assert.rejects(unsupported.backend.putNew('frost.repo', Buffer.from('x')), /filesystem with hard links/);
+  await assert.rejects(
+    unsupported.backend.putNew('frost.repo', Buffer.from('x')),
+    /filesystem that supports hard links/,
+  );
   assert.deepEqual(files(unsupported.root), []);
 
   // A failed link where the key exists is an ordinary errExists.
@@ -283,7 +289,7 @@ test('SFTP explains garbled output, a missing ssh client and a missing key', asy
   const garbled = await setup(t, { banner: 'Welcome to my NAS! Have a nice day.\n' });
   await assert.rejects(
     garbled.backend.get('frost.repo'),
-    (e: SSHError) => e.problem === 'garbled' && /login script/.test(e.message),
+    (e: SSHError) => e.problem === 'garbled' && /startup shell scripts/.test(e.message),
   );
 
   const { home, identity } = await setup(t);

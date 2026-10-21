@@ -356,7 +356,11 @@ export async function backup(e: EngineLike, opts: BackupOptions, signal?: AbortS
   // so `named` puts the path in front.
   const icloud = (err: unknown) => process.platform === 'darwin' && (err as NodeJS.ErrnoException)?.errno === -11;
   const unreadable = (p: string, err: unknown, named = true) =>
-    icloud(err) ? (named ? p + ' is' : "it's") + " only in iCloud, so frost didn't download it" : message(err);
+    icloud(err)
+      ? named
+        ? p + ' resides in iCloud storage only; frost did not download it'
+        : 'file is stored only in iCloud; frost did not download it'
+      : message(err);
 
   // `retry` holds files that changed while they were read.
   const tree: Tree = { files: [] };
@@ -538,7 +542,7 @@ export async function backup(e: EngineLike, opts: BackupOptions, signal?: AbortS
           snap.stats.kept = (snap.stats.kept ?? 0) + 1;
           if (snap.kept!.length < 100) snap.kept!.push(f.path);
           add(p, f, { path: f.path, size: f.size, newBytes: 0 });
-        } else warn(p + " kept changing while it was read and has no earlier copy, so it wasn't backed up");
+        } else warn(p + ' changed continuously during reading and lacks a prior backup version; skipped');
       }
     }
 

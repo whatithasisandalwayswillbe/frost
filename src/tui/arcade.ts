@@ -571,7 +571,7 @@ export class Arcade {
 
   // The status line over a boxed field.
   view(): string {
-    if (this.tooSmall()) return style('text', 'Make the window bigger to play (at least 36x22).');
+    if (this.tooSmall()) return style('text', 'Enlarge to 36x22 or more to play.');
     const c = new Canvas(this.w, this.h);
     if (this.phase === 'title') this.drawTitle(c);
     else if (this.phase === 'over') this.drawOver(c);

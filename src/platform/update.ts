@@ -15,7 +15,7 @@ export { releaseKey } from './signature.js';
 export const repo = 'whatithasisandalwayswillbe/frost';
 export const baseURL = 'https://github.com/' + repo + '/releases';
 export const errDevBuild = new Error(
-  "this frost was built from source, so it can't update itself. Rebuild it, or install a release with the installer: https://github.com/" +
+  'this frost build comes from source and cannot update itself. Rebuild from source or reinstall via the official package: https://github.com/' +
     repo +
     '#install',
 );
@@ -236,7 +236,7 @@ export const executable = () => path.resolve(process.env.FROST_APP_ROOT || insta
 // writable by creating and removing a probe file.
 export async function canReplace(root: string): Promise<void> {
   const pm = managed(root);
-  if (pm) throw new Error(`${root} was installed by ${pm}, update it there`);
+  if (pm) throw new Error(`${root} was installed via ${pm}; use that package manager to update frost`);
   const directory = await installationDirectory(root, true);
   const probe = '.frost-update-probe-' + randomUUID();
   try {
@@ -467,8 +467,7 @@ export async function installRelease(
       options,
     );
     const sum = createHash('sha256').update(archive).digest();
-    if (!timingSafeEqual(sum, rel.sum))
-      throw new Error(`${rel.archive} doesn't match its signed checksum, not installing it`);
+    if (!timingSafeEqual(sum, rel.sum)) throw new Error(`${rel.archive} failed checksum verification; update aborted`);
     const entries = extractArchive(rel.archive, archive);
     const target = options.platform ?? (await platform(options.runner));
     // A release this frost can't read is signed and fine, so say how to get past it.
@@ -477,7 +476,7 @@ export async function installRelease(
       manifest = validatePackage(entries, rel.version, target);
     } catch (e) {
       throw new Error(
-        `${(e as Error).message}. This frost may be too old to read ${rel.version}, so reinstall it: https://github.com/${repo}#install`,
+        `${(e as Error).message}. This frost installation may not support the ${rel.version} package format. Reinstall frost: https://github.com/${repo}#install`,
         { cause: e },
       );
     }

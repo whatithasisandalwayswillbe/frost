@@ -26,28 +26,30 @@ interface Provider {
 const noSpaces =
   (name: string) =>
   (v: string): string =>
-    /[ \t]/.test(v) ? 'The ' + name + ' has no spaces in it. Check you copied just the ' + name + '.' : '';
+    /[ \t]/.test(v) ? 'The ' + name + ' cannot contain spaces. Ensure only the ' + name + ' was copied.' : '';
 
 const checkRegion = (v: string): string =>
-  /^[a-z]{2}(-[a-z]+)+-[0-9]+$/.test(v) ? '' : 'Regions look like us-east-1 or eu-central-1.';
+  /^[a-z]{2}(-[a-z]+)+-[0-9]+$/.test(v) ? '' : 'Region format example: us-east-1 or eu-central-1.';
 
 const checkAccountID = (v: string): string =>
-  /^[0-9a-fA-F]{32}$/.test(v) ? '' : 'An account ID is 32 letters and numbers. Copy it from the R2 overview page.';
+  /^[0-9a-fA-F]{32}$/.test(v)
+    ? ''
+    : 'Account IDs consist of 32 hexadecimal characters. Copy yours from the Cloudflare R2 overview page.';
 
 const checkBucket = (v: string): string =>
   Buffer.byteLength(v) < 3 || Buffer.byteLength(v) > 63 || /[ /\t]/.test(v)
-    ? 'Bucket names are 3 to 63 characters, with no spaces or slashes.'
+    ? 'Bucket names must be between 3 and 63 characters, containing no spaces or slashes.'
     : '';
 
 // Accepts a host, with or without a scheme, but no path. A bare host is read as https.
 function checkEndpoint(v: string): string {
-  if (/[ \t]/.test(v)) return 'The endpoint has no spaces in it.';
+  if (/[ \t]/.test(v)) return 'Endpoints must not contain spaces.';
   try {
     const u = new URL(v.includes('://') ? v : 'https://' + v);
     if (!u.host || u.pathname.replaceAll('/', '')) throw new Error();
     return '';
   } catch {
-    return 'Type just the host name, like s3.example.com.';
+    return 'Enter only the hostname (e.g., s3.example.com).';
   }
 }
 
@@ -76,7 +78,7 @@ function checkB2Endpoint(v: string): string {
     checkEndpoint(v) ||
     (hostOf(v).replace(/\/$/, '').endsWith('.backblazeb2.com')
       ? ''
-      : "That doesn't look right. Make sure you're entering the endpoint correctly.")
+      : 'This does not appear to be a Backblaze B2 endpoint. Verify the endpoint in your bucket settings.')
   );
 }
 
@@ -101,7 +103,7 @@ function s3(s: Storage, endpoint: string, region: string, bucket: string, id: st
 // The S3 providers all end with the same bucket, key ID and secret questions. Fields are shared
 // between providers, so setup copies them before filling them in.
 const fBucket: Field = {
-  question: "What's the bucket called?",
+  question: 'What is the bucket name?',
   help: 'Its name, exactly as you created it.',
   name: 'bucket name',
   about: 'bucket',
@@ -139,14 +141,15 @@ export function joinAddress(host: string, port: number): string {
 
 export function checkAddress(v: string): string {
   const { host, port } = splitAddress(v);
-  if (/[ \t]/.test(v)) return 'The address has no spaces in it.';
-  if (host.startsWith('-') || !/^[A-Za-z0-9._%+:@-]+$/.test(host)) return 'Type a host, like me@nas.local or nas.';
-  if (port > 65535 || (port === 0 && /:0+$/.test(v))) return 'Ports go from 1 to 65535.';
+  if (/[ \t]/.test(v)) return 'Host addresses must not contain spaces.';
+  if (host.startsWith('-') || !/^[A-Za-z0-9._%+:@-]+$/.test(host))
+    return 'Enter a host address (e.g., me@nas.local or nas).';
+  if (port > 65535 || (port === 0 && /:0+$/.test(v))) return 'Port numbers must be between 1 and 65535.';
   return '';
 }
 
 const checkFolder = (v: string): string =>
-  /[\x00-\x1f]/.test(v) || v === '~' ? 'Type a folder, like frost or /srv/backups/frost.' : '';
+  /[\x00-\x1f]/.test(v) || v === '~' ? 'Enter a folder path (e.g., frost or /srv/backups/frost).' : '';
 
 // The placeholder shows a drive path in this system's style.
 const drivePath =
@@ -157,7 +160,7 @@ const drivePath =
       : '/mnt/backup/frost';
 
 export const checkDrivePath = (v: string): string =>
-  path.isAbsolute(expand(v)) ? '' : 'Type a full path, like ' + drivePath + '.';
+  path.isAbsolute(expand(v)) ? '' : 'Enter an absolute path (e.g., ' + drivePath + ').';
 
 // Setup treats index 0 as Permafrost. Other S3-compatible comes after the named S3 services because it matches
 // any S3 config, so they have to be tried first.
@@ -185,7 +188,7 @@ export const providers: Provider[] = [
     name: 'Amazon S3',
     fields: [
       {
-        question: 'Which region is the bucket in?',
+        question: 'Which region hosts the bucket?',
         help: 'E.g. us-east-1.',
         name: 'region',
         about: 'address',
@@ -193,13 +196,13 @@ export const providers: Provider[] = [
       },
       fBucket,
       access(
-        'Paste the access key ID.',
+        'Paste the Access Key ID.',
         'access key ID',
         'key',
         'IAM > Users > your user > Security credentials > Create access key.',
       ),
       access(
-        'Paste the secret access key.',
+        'Paste the Secret Access Key.',
         'secret access key',
         'secret',
         'Shown once, next to the access key ID.',
@@ -214,7 +217,7 @@ export const providers: Provider[] = [
     name: 'Backblaze B2',
     fields: [
       {
-        question: "What's the bucket's endpoint?",
+        question: 'What is the bucket endpoint?',
         help: 'Buckets > your bucket > Endpoint. E.g. s3.us-west-004.backblazeb2.com.',
         name: 'endpoint',
         about: 'address',
@@ -225,7 +228,7 @@ export const providers: Provider[] = [
         "Paste the application key's keyID.",
         'keyID',
         'key',
-        'Application Keys > Add a New Application Key. Limit it to this bucket.',
+        'Application Keys > Add a New Application Key. Restrict access to this bucket.',
       ),
       access(
         'Paste the applicationKey.',
@@ -243,7 +246,7 @@ export const providers: Provider[] = [
     name: 'Cloudflare R2',
     fields: [
       {
-        question: "What's your Cloudflare account ID?",
+        question: 'What is your Cloudflare Account ID?',
         help: 'On the R2 overview page, 32 letters and numbers.',
         name: 'account ID',
         about: 'address',
@@ -272,15 +275,15 @@ export const providers: Provider[] = [
     name: 'Wasabi',
     fields: [
       {
-        question: 'Which region is the bucket in?',
+        question: 'Which region hosts the bucket?',
         help: 'E.g. us-east-1 or eu-central-1.',
         name: 'region',
         about: 'address',
         check: checkRegion,
       },
       fBucket,
-      access('Paste the access key.', 'access key', 'key', 'Access Keys > Create New Access Key.'),
-      access('Paste the secret key.', 'secret key', 'secret', 'Shown once, when you create the key.', true),
+      access('Paste the Access Key.', 'access key', 'key', 'Access Keys > Create New Access Key.'),
+      access('Paste the Secret Key.', 'secret key', 'secret', 'Shown once, when you create the key.', true),
     ],
     read: s => [s.s3.region, ...readKeys(s)],
     apply: (v, s) => s3(s, 's3.' + v[0] + '.wasabisys.com', v[0], v[1], v[2], v[3]),
@@ -291,8 +294,8 @@ export const providers: Provider[] = [
     note: 'Ceph, SeaweedFS',
     fields: [
       {
-        question: "What's the S3 endpoint?",
-        help: "Your server's or provider's docs list it. Use http:// only for local servers.",
+        question: 'What is the S3 endpoint?',
+        help: 'Refer to server or provider documentation for this value. Use http:// only for local servers.',
         name: 'endpoint',
         about: 'address',
         check: checkEndpoint,
@@ -300,16 +303,16 @@ export const providers: Provider[] = [
       {
         question: 'Which region?',
         optional: true,
-        placeholder: "leave blank if there isn't one",
+        placeholder: 'leave blank if not applicable',
         help: 'Only if your server or provider asks for one.',
         name: 'region',
         about: 'address',
         check: noSpaces('region'),
       },
       fBucket,
-      access('Paste the access key ID.', 'access key ID', 'key', "From your server's or provider's console."),
+      access('Paste the Access Key ID.', 'access key ID', 'key', "From your server's or provider's console."),
       access(
-        'Paste the secret access key.',
+        'Paste the Secret Access Key.',
         'secret access key',
         'secret',
         "From your server's or provider's console.",
@@ -325,9 +328,9 @@ export const providers: Provider[] = [
     note: 'your server over SSH',
     fields: [
       {
-        question: "What's the server's SSH address?",
+        question: 'What is the server SSH address?',
         placeholder: 'like me@nas.local',
-        help: 'A user and host, or a Host from your SSH config. Add :2222 for another port.',
+        help: 'A user and host, or a Host from your SSH config. Append a port number, such as :2222, to use a custom port.',
         name: 'address',
         about: 'address',
         check: checkAddress,
@@ -354,9 +357,9 @@ export const providers: Provider[] = [
     note: 'USB or internal disk',
     fields: [
       {
-        question: 'Which folder should hold your backups?',
+        question: 'Which folder should store your backups?',
         placeholder: 'like ' + drivePath,
-        help: "On a drive that's connected now. frost creates the last folder if it isn't there.",
+        help: "On a drive that's connected now. frost will automatically create the final folder in the path if it does not exist.",
         name: 'folder',
         about: 'folder',
         check: checkDrivePath,

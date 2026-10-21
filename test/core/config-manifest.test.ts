@@ -87,10 +87,11 @@ test('schedule time, day and catch-up have defaults, parse strictly and report e
   assert.deepEqual(timeOfDay('00:00'), { hour: 0, minute: 0 });
   assert.deepEqual(timeOfDay('23:59'), { hour: 23, minute: 59 });
   for (const bad of ['24:00', '12:60', '3pm', '3:00 PM', '15', '15:0', '', '1500'])
-    assert.throws(() => timeOfDay(bad), /schedule.time must be a 24-hour time/);
+    assert.throws(() => timeOfDay(bad), /schedule\.time must use 24-hour HH:MM format/);
   assert.equal(weekday('Wednesday'), 3);
   assert.equal(weekday(' SUNDAY '), 0);
-  for (const bad of ['sun', 'funday', '']) assert.throws(() => weekday(bad), /schedule.day must be a day of the week/);
+  for (const bad of ['sun', 'funday', ''])
+    assert.throws(() => weekday(bad), /schedule\.day must be a valid day of the week/);
   assert.deepEqual(times({ ...c.schedule, every: '6h', time: '9:30', day: 'friday' }), {
     every: 6 * 3600e3,
     hour: 9,
@@ -108,8 +109,8 @@ test('schedule time, day and catch-up have defaults, parse strictly and report e
     (error: Error) => {
       assert.deepEqual(error.message.split('\n'), [
         'schedule.every must be one of hourly, 2h, 3h, 4h, 6h, 8h, 12h, daily, weekly',
-        'schedule.time must be a 24-hour time, like 15:00 or 09:30',
-        'schedule.day must be a day of the week, like sunday',
+        'schedule.time must use 24-hour HH:MM format (e.g., 15:00 or 09:30)',
+        'schedule.day must be a valid day of the week (e.g., sunday)',
       ]);
       return true;
     },
@@ -207,7 +208,7 @@ test('adding folders rejects aliases and overlaps and keeps filesystem roots val
   // Empty, relative and file paths are refused, as are duplicates and folders already covered.
   for (const value of ['', 'Documents', path.join(folder, 'note.txt')]) await assert.rejects(addPath(value, []));
   await assert.rejects(addPath(docs, [docs]), /already/);
-  await assert.rejects(addPath(path.join(docs, 'taxes'), [docs]), /inside/);
+  await assert.rejects(addPath(path.join(docs, 'taxes'), [docs]), /already included via target directory/);
   assert.equal((await addPath(path.parse(folder).root, [])).path, path.parse(folder).root);
 });
 
@@ -287,12 +288,12 @@ test('manifest truncates interrupted final transactions and refuses corrupted co
 
   // Editing a complete record breaks its checksum, which is corruption rather than a crash.
   await writeFile(file, raw.replace('"good"', '"evil"'));
-  await assert.rejects(Manifest.open(file), /corrupt; remove it to rebuild/);
+  await assert.rejects(Manifest.open(file), /corrupted; delete it to force rebuilding/);
 
   // A complete line that isn't a JSON object gets the same advice, not a raw parse error.
   for (const line of ['{not json', 'null', '7']) {
     await writeFile(file, raw + line + '\n');
-    await assert.rejects(Manifest.open(file), /corrupt; remove it to rebuild/);
+    await assert.rejects(Manifest.open(file), /corrupted; delete it to force rebuilding/);
   }
 });
 

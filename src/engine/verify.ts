@@ -18,8 +18,8 @@ const notFound = (err: unknown): boolean => {
 
 export function goneText(n: number): string {
   return n === 1
-    ? "1 snapshot this machine knew about isn't in storage any more"
-    : `${n} snapshots this machine knew about aren't in storage any more`;
+    ? '1 snapshot recorded locally is no longer present in backup storage'
+    : `${n} snapshots recorded locally are no longer present in backup storage`;
 }
 
 // Replaces the manifest's snapshot headers with the ones in storage, reusing cached headers, and counts

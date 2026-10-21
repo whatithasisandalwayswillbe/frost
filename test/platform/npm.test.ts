@@ -238,5 +238,8 @@ test('the frost command says which Node.js it needs', async t => {
     child.on('close', code => resolve({ code, stderr }));
   });
   assert.equal(result.code, 1);
-  assert.equal(result.stderr, 'getfrost: installing frost needs Node.js 22 or newer, and this is v18.20.0\n');
+  assert.equal(
+    result.stderr,
+    'getfrost: installing frost requires Node.js v22 or newer (detected version: v18.20.0)\n',
+  );
 });

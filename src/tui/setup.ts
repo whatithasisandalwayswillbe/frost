@@ -29,6 +29,7 @@ import {
   logo,
   rawWordmark,
   cutStyled,
+  wrapStyled,
 } from './render.js';
 import { runTerminal, type TerminalOptions } from './terminal.js';
 
@@ -612,13 +613,14 @@ export class SetupModel {
           this.seenWords = true;
         } else if (key === 'esc') this.goBack();
         else if (key === 'enter') {
-          if (!this.seenWords) this.err = 'Press [v] to show the words, and write them down first.';
+          if (!this.seenWords)
+            this.err = 'Press [v] to reveal the words and write them down securely before proceeding.';
           else {
             this.checkIdx = this.deps.pickWords();
             const [i, j] = this.checkIdx;
             this.check = new Form([
-              { question: "Let's check, what's word " + (i + 1) + '?' },
-              { question: 'What about word ' + (j + 1) + '?' },
+              { question: 'Verification: enter word ' + (i + 1) + ':' },
+              { question: 'Enter word ' + (j + 1) + ':' },
             ]);
             this.showWords = false;
             this.goTo('check');
@@ -632,10 +634,10 @@ export class SetupModel {
         else if (this.check.key(e)) {
           const n = this.checkIdx[this.check.focus];
           const got = this.check.values()[this.check.focus];
-          if (!got) this.err = `Type word ${n + 1} from your copy.`;
+          if (!got) this.err = `Enter word ${n + 1} from your saved recovery phrase.`;
           else if (got.toLowerCase() !== this.key!.phrase().split(/\s+/)[n].toLowerCase()) {
             this.check.fields[this.check.focus].value = '';
-            this.err = `That's not word ${n + 1}. Check your copy, or press [esc] to see the words again.`;
+            this.err = `Incorrect entry for word ${n + 1}. Check your notes or press [esc] to view the recovery phrase again.`;
           } else if (!this.check.focus) this.check.focus = 1;
           else {
             this.keyReady = true;
@@ -649,8 +651,9 @@ export class SetupModel {
         else if (key === 'tab') this.phrase.reveal = !this.phrase.reveal;
         else if (this.phrase.key(e)) {
           const words = this.phrase.values()[0].split(/\s+/).filter(Boolean);
-          if (!words.length) this.err = 'Type your recovery phrase.';
-          else if (words.length !== 24) this.err = `That's ${words.length} words. A recovery phrase has 24.`;
+          if (!words.length) this.err = 'Enter your 24-word recovery phrase.';
+          else if (words.length !== 24)
+            this.err = `Entered ${words.length} ${words.length === 1 ? 'word' : 'words'}; valid recovery phrases require 24 words.`;
           else {
             this.busy = 'Checking the phrase';
             this.onChange?.();
@@ -733,7 +736,7 @@ export class SetupModel {
     else if (form.key(e)) {
       const typed = form.values()[0];
       if (!typed || (skip && !splitList(typed).length)) {
-        if (!skip && !items.length) this.err = 'Add at least one folder to continue.';
+        if (!skip && !items.length) this.err = 'Include at least one directory to proceed.';
         else {
           this.visited.add(skip ? 'skip' : 'folders');
           await this.advance();
@@ -745,7 +748,7 @@ export class SetupModel {
           try {
             new Excluder([p]);
           } catch {
-            this.err = JSON.stringify(p) + " isn't a valid pattern. Check its brackets.";
+            this.err = JSON.stringify(p) + ' is an invalid pattern. Verify bracket syntax.';
             return;
           }
         }
@@ -758,7 +761,12 @@ export class SetupModel {
           const dropped = items.filter((_, i) => result.inside.includes(i));
           this.cfg.paths = [...items.filter((_, i) => !result.inside.includes(i)), result.clean];
           if (dropped.length)
-            this.note = 'Took ' + dropped.join(', ') + ' off the list, ' + result.clean + ' includes it.';
+            this.note =
+              'Removed redundant entries (' +
+              dropped.join(', ') +
+              ') because ' +
+              result.clean +
+              ' already covers them.';
           form.fields = [{ placeholder: form.fields[0].placeholder }];
         } catch (err) {
           this.err = message(err);
@@ -899,7 +907,7 @@ export class SetupModel {
   view(): string {
     if (this.w <= 0 || this.h <= 0) return '';
     if (this.w < 56 || this.h < 18)
-      return clip(place(this.w, this.h, style('text', 'make the window at least 56x18')), this.w, this.h);
+      return clip(place(this.w, this.h, style('text', 'Resize to at least 56x18')), this.w, this.h);
 
     // The header, the spacer rows around the body, the rule and the hints take 5 rows. Without the
     // header, only the rule and the hints are left.
@@ -936,7 +944,7 @@ export class SetupModel {
     switch (this.step) {
       case 'storage':
         return {
-          question: 'Where should backups go?',
+          question: 'Where should your backups be stored?',
           sub: 'Choose your storage below.',
           body: choices.map((c, i) => choice(i === this.provCur, c.name, c.note, 21, cw)),
         };
@@ -954,7 +962,7 @@ export class SetupModel {
         return {
           over: providers[selfHosted].name,
           question: `Add frost's SSH key to ${this.pending.sftp.host}.`,
-          sub: 'frost logs in with its own key, so scheduled backups never need a password.',
+          sub: 'frost authenticates using SSH keys; scheduled backups run without requiring passwords.',
           body: [
             choice(this.keyCur === 0, 'Add it for me', 'needs your password once', 21, cw),
             choice(this.keyCur === 1, "I'll add it myself", 'shows where the key is', 21, cw),
@@ -965,9 +973,9 @@ export class SetupModel {
         return {
           over: providers[selfHosted].name,
           question: "Add frost's key to the server.",
-          sub: `Add the line in this file to ~/.ssh/authorized_keys on ${this.pending.sftp.host}, then press [enter].`,
+          sub: `Append the key in this file to ~/.ssh/authorized_keys on ${this.pending.sftp.host}, then press [enter].`,
           body: [inputBox({ value: this.deps.keyFile?.() ?? '' }, false, false, cw)],
-          help: projectLink + '/help/storage/self-hosted shows how.',
+          help: 'Refer to ' + projectLink + '/help/storage/self-hosted for instructions.',
         };
 
       case 'details': {
@@ -982,13 +990,14 @@ export class SetupModel {
           // The default server's key field says where keys come from. A custom server has its own way.
           ...(this.prov === 0 && !this.cfg.storage.permafrost.url
             ? {
-                extra: [
+                extra: wrapStyled(
                   this.permaCur
-                    ? style('text', 'Get one at ') +
-                      style('bold', permafrostKeyPage.replace('https://', '')) +
-                      style('text', ', then paste it here.')
+                    ? style('text', 'Obtain an access key at ') +
+                        style('bold', permafrostKeyPage.replace('https://', '')) +
+                        style('text', ', then paste it below.')
                     : style('text', 'No key yet? Press ') + style('bold', '[esc]') + style('text', ' to get one.'),
-                ],
+                  cw,
+                ),
               }
             : {}),
         };
@@ -998,7 +1007,7 @@ export class SetupModel {
         return {
           over: 'Permafrost',
           question: 'Do you have a Permafrost access key?',
-          sub: "It's the only thing frost needs to connect.",
+          sub: 'This key is required to authenticate frost with Permafrost storage.',
           body: [
             choice(this.permaCur === 0, 'I have a key', '', 26, cw),
             choice(this.permaCur === 1, "I don't have a key yet", 'get one in your browser', 26, cw),
@@ -1020,18 +1029,18 @@ export class SetupModel {
 
       case 'schedule':
         return {
-          question: 'How often should frost back up?',
-          sub: 'Backups run automatically in the background, only uploading new or modified files.',
+          question: 'Select how often frost should back up:',
+          sub: 'Backups run automatically in the background. Incremental backups upload only new data.',
           body: this.schedOptions().map((o, i) => choice(i === this.schedCur, schedLabel(o), '', 40, cw)),
-          foot: 'You can change this any time by running frost init again.',
+          foot: "Backup schedules can be changed using 'frost init'.",
         };
 
       case 'phrase':
         return {
           question: 'Write down your recovery phrase.',
-          sub: "It's the only way to get your files back if this machine is ever lost.",
+          sub: 'This phrase is essential for data recovery if this machine is lost or damaged.',
           body: [this.phraseCard(cw)],
-          help: 'Consider writing it down on paper and placing it somewhere secure. Make sure nobody but you has access.',
+          help: 'Store a paper copy in a secure location that only you can access.',
         };
 
       case 'check':
@@ -1039,7 +1048,7 @@ export class SetupModel {
           over: `Confirm you've saved your phrase (${this.check.focus + 1} of 2)`,
           question: this.check.fields[this.check.focus].question ?? '',
           body: [inputBox(this.check.fields[this.check.focus], false, true, cw)],
-          help: 'Type it from what you wrote down.',
+          help: 'Enter the requested word using your written notes.',
         };
 
       case 'unlock':
@@ -1050,8 +1059,8 @@ export class SetupModel {
               : 'This storage already has backups.',
           sub:
             this.state === RepoState.LocalWrong
-              ? "The key on this machine doesn't open them. Type their recovery phrase, and frost will use that key here instead."
-              : 'Type the recovery phrase you saved when you first set them up.',
+              ? 'The local key cannot decrypt these backups. Enter their recovery phrase to use its key on this machine.'
+              : 'Enter the original recovery phrase created during backup setup.',
           body: [inputBox(this.phrase.fields[0], this.phrase.reveal, true, cw)],
           help: 'All 24 words, separated by spaces.',
         };
@@ -1083,7 +1092,7 @@ export class SetupModel {
         }
         const pg: Page = {
           question: 'Review and finalise.',
-          sub: "Adjust your preferences below. When you're ready, press [s] to finish.",
+          sub: 'Review options below. Press [s] to save configuration.',
           body: rows,
         };
 
@@ -1092,9 +1101,9 @@ export class SetupModel {
         if (this.newRepo && this.elsewhere) {
           const warning = para(
             'caution',
-            'This starts a separate set of backups. Your current ones in ' +
+            'This creates a separate set of backups. Existing backups in ' +
               this.elsewhere +
-              ' stay there, but frost will only show the new ones, and the first backup uploads everything again.',
+              ' remain intact, but frost will now manage snapshots from this location. The initial backup uploads the selected data again.',
             cw,
           );
           let used =
@@ -1129,22 +1138,24 @@ export class SetupModel {
 
     if (skip) {
       return {
-        question: 'Which files should frost skip?',
-        sub: 'Names or patterns. * matches anything, like *.tmp.',
+        question: 'Which file names or patterns should frost exclude?',
+        sub: 'Names or patterns. Use * as a wildcard, for example *.tmp, to exclude groups of files.',
         body: rows,
         help: items.length
-          ? 'Type a name or pattern and press enter to add it. Press enter on an empty box to move on.'
-          : 'Nothing is skipped yet. Type a name or pattern and press enter to add it.',
+          ? 'Enter a filename or pattern and press [enter]. Leave input blank and press [enter] to continue.'
+          : 'Nothing is skipped yet. Enter a filename or pattern and press [enter].',
       };
     }
     return {
-      question: 'Which folders should frost back up?',
+      question: 'Which directories should frost back up?',
       sub: 'Whole folders, with everything inside them.',
       body: rows,
       help: items.length
-        ? 'Type a path and press enter to add it. Press enter on an empty box to move on.'
-        : 'Type a path and press enter to add it. Add as many as you like.',
-      foot: missing ? "A folder that isn't there is skipped until it is, like a drive that isn't plugged in." : '',
+        ? 'Enter a directory path and press [enter]. Leave blank and press [enter] to continue.'
+        : 'Enter a directory path and press [enter] to add. Add as many directories as needed.',
+      foot: missing
+        ? 'Unavailable source directories will be skipped until they become available (e.g. disconnected external drives).'
+        : '',
     };
   }
 
@@ -1262,7 +1273,10 @@ export class SetupModel {
     const text: string[] = [];
     if (this.existing) {
       text.push(
-        center('text', 'frost is already set up on this machine. Review your settings, change any of them, and save.'),
+        center(
+          'text',
+          'frost is already set up on this machine. Review your configuration choices, apply edits, and save changes.',
+        ),
         blank(w),
       );
       for (const r of this.reviewRows())
@@ -1273,7 +1287,7 @@ export class SetupModel {
         fill(w, 2),
         row(style('text', 'learn more at ') + style('link', projectLink)),
         blank(w),
-        center('dim', 'Setup takes about two minutes.'),
+        center('dim', 'Setup completion takes approximately two minutes.'),
       );
     }
 
@@ -1308,13 +1322,13 @@ export class SetupModel {
     const tw = Math.min(w, 60);
     let when = this.cfg.schedule.enabled
       ? 'Your folders will be backed up ' + schedLabel(this.schedValue()).toLowerCase() + '.'
-      : 'Automatic backups are off, so run a backup whenever you like.';
+      : 'Automatic backups disabled. Perform backups manually on demand.';
     let retry = '';
     let st: 'text' | 'caution' = 'text';
     for (const r of this.savedRows)
       if (r[0] === 'schedule' && r[1].startsWith('not installed')) {
-        retry = 'Run frost init again to retry.';
-        when = "Automatic backups couldn't be set up (" + r[1].replace(/^not installed: /, '') + '). ' + retry;
+        retry = "Run 'frost init' to retry configuration.";
+        when = 'Failed to set up automatic schedule (' + r[1].replace(/^not installed: /, '') + '). ' + retry;
         st = 'caution';
       }
 

@@ -33,8 +33,8 @@ export async function runKey(ctx: Context, action: string): Promise<void> {
     const key = await ctx.loadKey();
     p.open('recovery phrase');
     p.gap();
-    p.warn(f.caution('Anyone who sees this phrase can decrypt all of your backups.'));
-    p.line("Make sure nobody's looking at your screen and you're not screen sharing.");
+    p.warn(f.caution('Anyone with access to this recovery phrase can decrypt your backups.'));
+    p.line('Ensure your screen is private and not being shared before proceeding.');
     await requireConfirmation(p.confirm('show', 'continue'));
     p.gap();
     p.line(phraseGrid(f, key.phrase()));
@@ -99,7 +99,7 @@ export async function runKey(ctx: Context, action: string): Promise<void> {
     try {
       local = await ctx.loadKey();
     } catch (err) {
-      if (err !== errNoKey) p.warn(f.caution('The existing key file is unreadable and will be replaced.'));
+      if (err !== errNoKey) p.warn(f.caution('The existing key file is unreadable and will be overwritten.'));
     }
 
     const key = phraseKey(await p.secret(f.bold('Recovery phrase:')));
@@ -124,11 +124,16 @@ export async function runKey(ctx: Context, action: string): Promise<void> {
         throw new Error(`this phrase can't open ${what}: ${(err as Error).message}`);
       }
       p.ok('opens the repository at ' + printable(String(b)));
-    } else p.line(f.dim("No config yet, so the phrase wasn't checked against any storage. Run `frost init` next."));
+    } else
+      p.line(
+        f.dim(
+          'No configuration found, so the recovery phrase could not be validated against storage. Run `frost init` next.',
+        ),
+      );
 
     if (local) {
-      p.warn(f.caution('This replaces the key currently on this machine (' + local.fingerprint() + ').'));
-      p.line('Backups made with the old key will need the old phrase to restore.');
+      p.warn(f.caution('This will replace the active key on this machine (' + local.fingerprint() + ').'));
+      p.line('Backups created with the previous key will require its original recovery phrase to restore.');
       await requireConfirmation(p.yesNo('Replace it?', false));
     }
     await ctx.saveKey(key);

@@ -57,8 +57,7 @@ test('local storage never creates a missing folder except through prepare', asyn
   const base = temp(t);
   const root = path.join(base, 'drive', 'frost');
   const b = backend(t, root);
-  const missing = (e: Error) =>
-    e instanceof MissingRootError && e.code === 'ENOMEDIUM' && /isn't there/.test(e.message);
+  const missing = (e: Error) => e instanceof MissingRootError && e.code === 'ENOMEDIUM' && /not found/.test(e.message);
   await assert.rejects(b.get('frost.repo'), missing);
   await assert.rejects(b.list(''), missing);
   await assert.rejects(b.put('chunks/ab/ab01', Buffer.from('x')), missing);

@@ -82,7 +82,7 @@ export const movable = (...storages: (config.Storage | undefined)[]) =>
 
 // How to move existing backups to `shown`.
 export const moveHint = (shown: string) =>
-  'move the whole folder (frost.repo, chunks/, snapshots/ and trees/) to ' + shown;
+  'move the entire repository folder (frost.repo, chunks/, snapshots/, and trees/) to ' + shown;
 
 // The settings that decide where backups live. After a change of backend, nothing else is compared.
 function changedStorage(a: config.Storage, b: config.Storage): { key: string; was: string; now: string }[] {
@@ -112,20 +112,16 @@ const quoteValue = (v: string): string => (!v || /[ \t'"]/.test(v) ? JSON.string
 // drive, another drive may be mounted in its place. Permafrost refuses the access key once it removes an account's
 // backups itself, so with the key still working, they were most likely deleted using it.
 function goneHint(s: config.Storage): string {
-  const here = 'This is where your backups were.';
   if (s.backend === 'local')
-    return (
-      here +
-      ' If another drive is connected in its place, connect the one with your backups. If you moved them, move all of them back, or point frost at where they are now.'
-    );
+    return 'Expected backups were not found at this location. If another drive is mounted here, reattach the original drive. If files were moved, return all repository contents or update frost with the new path.';
   if (s.backend !== 'permafrost')
-    return here + ' If you moved them, move all of them back, or point frost at where they are now.';
-  if (!isDefaultPermafrost(s.permafrost.url)) return here + ' Ask whoever runs this server what happened to them.';
+    return 'Expected backups were not found at this location. If files were moved, return all repository contents or update frost with the new location.';
+  if (!isDefaultPermafrost(s.permafrost.url))
+    return 'Expected backups were not found at this location. Consult your server administrator regarding the missing repository.';
   return (
-    here +
-    ' Permafrost keeps backups while their access key works, so they were most likely deleted using yours. Email ' +
+    'Expected backups are missing. Permafrost retains data while access keys remain active; these backups may have been deleted using your credentials. Contact support at ' +
     permafrostSupport +
-    ' straight away. If someone else might have your key, get a new one at ' +
+    '. If key compromise is suspected, request a replacement at ' +
     permafrostRecoverPage.replace('https://', '') +
     '.'
   );
@@ -141,7 +137,9 @@ function storageHint(k: Known, s: config.Storage, b: Backend, missing: boolean):
   const lines = ['Your backups were last opened in ' + k.shown + '.'];
   changed.forEach(c => lines.push(`Since then ${c.key} changed from ${quoteValue(c.was)} to ${quoteValue(c.now)}.`));
   if (!changed.length && s.backend === 'permafrost')
-    lines.push('Since then storage.permafrost.token changed, so this may be a different Permafrost account.');
+    lines.push(
+      'storage.permafrost.token has changed since this storage was last opened; this may indicate a different Permafrost account.',
+    );
 
   // The quickest way back is the command that undoes the change.
   let back = 'frost init, pointed back at ' + k.shown;

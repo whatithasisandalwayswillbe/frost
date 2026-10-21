@@ -86,14 +86,14 @@ export function interval(value: string): number {
 export function timeOfDay(value: string): { hour: number; minute: number } {
   const m = /^(\d{1,2}):(\d\d)$/.exec(value.trim());
   if (!m || Number(m[1]) > 23 || Number(m[2]) > 59)
-    throw new Error('schedule.time must be a 24-hour time, like 15:00 or 09:30');
+    throw new Error('schedule.time must use 24-hour HH:MM format (e.g., 15:00 or 09:30)');
   return { hour: Number(m[1]), minute: Number(m[2]) };
 }
 
 // Converts schedule.day to a weekday number, 0 for Sunday.
 export function weekday(value: string): number {
   const day = days.indexOf(value.trim().toLowerCase());
-  if (day < 0) throw new Error('schedule.day must be a day of the week, like sunday');
+  if (day < 0) throw new Error('schedule.day must be a valid day of the week (e.g., sunday)');
   return day;
 }
 
@@ -132,7 +132,7 @@ export function validate(c: Config): void {
   } else if (!backend) errors.push("storage.backend isn't set (" + backends + ')');
   else if (backend !== 'permafrost') errors.push(`unknown storage.backend ${JSON.stringify(backend)} (${backends})`);
   if (sftp.port < 0 || sftp.port > 65535)
-    errors.push('storage.sftp.port must be from 1 to 65535, or 0 for the SSH default');
+    errors.push('storage.sftp.port must be an integer between 1 and 65535, or 0 to use the SSH default');
   if (errors.length) throw new Error(errors.join('\n'));
 }
 
@@ -455,9 +455,9 @@ export async function addPath(raw: string, paths: string[]): Promise<{ path: str
   const normalized = path.normalize(raw.trim());
   const clean = normalized === path.parse(normalized).root ? normalized : normalized.replace(/[\\/]$/, '');
   const full = expand(clean);
-  if (!path.isAbsolute(full)) throw new Error('use a full path, like ~/Documents');
+  if (!path.isAbsolute(full)) throw new Error('provide an absolute path (e.g., ~/Documents)');
   try {
-    if (!(await stat(full)).isDirectory()) throw new Error("that's a file, frost backs up whole folders");
+    if (!(await stat(full)).isDirectory()) throw new Error('path is a file; frost backs up entire directories');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
@@ -481,7 +481,7 @@ export async function addPath(raw: string, paths: string[]): Promise<{ path: str
       /* Missing folders compare by path. */
     }
     if (same) throw new Error(`${paths[i]} is already on the list`);
-    if (within(full, existing)) throw new Error(`that's already included, it's inside ${paths[i]}`);
+    if (within(full, existing)) throw new Error(`path is already included via target directory ${paths[i]}`);
     if (within(existing, full)) inside.push(i);
   }
   return { path: clean, inside };

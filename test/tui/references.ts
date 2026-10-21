@@ -2,6 +2,7 @@
 // and every other platform uses its linux/ folder.
 
 import { readFileSync } from 'node:fs';
+import { copyFrame } from '../copy.js';
 
 // Tests run from dist/test/tui, so the fixtures are three folders up.
 export const referenceDir = new URL(
@@ -10,7 +11,8 @@ export const referenceDir = new URL(
 );
 
 // Reads one captured frame, such as 'setup-01-welcome-080', with its escape sequences intact.
-export const reference = (name: string): string => readFileSync(new URL(name + '.ans', referenceDir), 'utf8');
+export const reference = (name: string): string =>
+  copyFrame(name, readFileSync(new URL(name + '.ans', referenceDir), 'utf8'));
 
 // The missing folder typed into the captured setup wizard. It's a native path, so each platform has its own.
 export const setupInput: { missingDir: string } = JSON.parse(

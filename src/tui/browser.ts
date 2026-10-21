@@ -455,7 +455,9 @@ export class BrowserModel {
           if (!this.deps.canOpen() || !this.deps.openBrowser) throw new Error('no browser is available');
           await this.deps.openBrowser(permafrostAccountPage);
         } catch {
-          this.err = new Error('Open ' + permafrostAccountPage + ' in your browser to manage your Permafrost account.');
+          this.err = new Error(
+            'Open ' + permafrostAccountPage + ' in a web browser to manage your Permafrost account.',
+          );
         }
       } else if (['esc', 'h', 's', 'q', '?'].includes(k)) {
         this.overlay = '';
@@ -536,7 +538,7 @@ export class BrowserModel {
       if (this.marked && this.marked !== cur.id) from = this.snaps.find(s => s.id === this.marked);
       else if (this.snapCur + 1 < n) from = this.snaps[this.snapCur + 1];
       else {
-        this.flash = 'This is the oldest snapshot, nothing to compare it with.';
+        this.flash = 'This is the oldest snapshot; there are no earlier entries to compare against.';
         return;
       }
       if (from) {
@@ -1248,7 +1250,7 @@ export class BrowserModel {
     try {
       if (rs.dest === 2) {
         if (k !== 'y') {
-          this.flash = 'Overwriting replaces existing files. Press [y] to confirm.';
+          this.flash = 'Overwriting will replace existing files. Press [y] to confirm.';
           return;
         }
         rs.folder = '';
@@ -1260,7 +1262,7 @@ export class BrowserModel {
         if (dir !== current) {
           if (rs.dest === 1) rs.chosen = dir;
           else rs.beside = dir;
-          this.flash = 'That folder now exists. Review the new destination and press [enter].';
+          this.flash = 'The destination folder now exists. Review the new path and press [enter].';
           return;
         }
         rs.folder = dir;
@@ -1341,7 +1343,7 @@ export class BrowserModel {
       rs.phase = rs.afterPick();
       if (e !== desktop.errCanceled) {
         this.startTyping();
-        this.flash = "Couldn't open the folder picker, so type the folder instead: " + asError(e).message;
+        this.flash = 'Could not open folder picker. Enter destination path manually: ' + asError(e).message;
       }
       this.onChange?.();
     };
@@ -1351,7 +1353,7 @@ export class BrowserModel {
       if (!current()) return;
       if (!canPick) {
         this.startTyping();
-        this.flash = "There's no folder picker here, so type the folder instead.";
+        this.flash = 'Folder picker unavailable in this environment. Enter directory path manually.';
         this.onChange?.();
         return;
       }
@@ -1397,7 +1399,7 @@ export class BrowserModel {
     if (!rs.input.key(e)) return;
     const v = rs.input.values()[0];
     if (!v) {
-      rs.inputErr = 'Type the folder to restore into.';
+      rs.inputErr = 'Enter the directory path to restore files into.';
       return;
     }
     const work = this.prepareRestore(() => (rs.phase = rs.afterPick()));

@@ -170,7 +170,7 @@ test('install.ps1 installs a signed release with its bundled runtime', windows, 
     'Signature ok',
     'Checksum ok',
     'Installed ' + path.join(f.bin, 'frost.cmd'),
-    `${f.bin} isn't on your PATH yet.`,
+    `${f.bin} is not currently in PATH.`,
     "Next: run 'frost init' to set up your first backup.",
   ])
     assert.ok(result.stdout.includes(line), line);
@@ -180,7 +180,10 @@ test('install.ps1 installs a signed release with its bundled runtime', windows, 
 
 test('install.ps1 refuses a release signed by another key or a damaged download', windows, async t => {
   for (const [options, message] of [
-    [{ signer: signingKey() }, "checksums.txt isn't signed by the frost release key. Don't install this."],
+    [
+      { signer: signingKey() },
+      'checksums.txt signature does not match official frost release key; installation aborted',
+    ],
     [{ tamper: true }, 'checksum mismatch for frost_1.2.3_windows_'],
   ] as const) {
     const f = await release(t, options);

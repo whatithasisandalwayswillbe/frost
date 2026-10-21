@@ -96,7 +96,9 @@ async function editorCommand(named: string): Promise<string[]> {
       return parts;
     }
   }
-  throw new Error(`can't find the editor ${JSON.stringify(parts[0])}, check it's installed and on your PATH`);
+  throw new Error(
+    `cannot find the editor ${JSON.stringify(parts[0])}; verify that it is installed and available in your PATH`,
+  );
 }
 
 // Finds a program by absolute path or on the PATH, trying Windows' executable extensions.
@@ -163,7 +165,7 @@ async function configEdit(ctx: Context, named: string): Promise<void> {
     let edited: Buffer, now: config.Config;
     for (;;) {
       const name = editorName(editor);
-      p.line(ctx.fmt.dim(`Opened config.toml in ${name}. Save your changes, then close ${name} to carry on.`));
+      p.line(ctx.fmt.dim(`Opened config.toml in ${name}. Save your changes, then close ${name} to continue.`));
       const start = Date.now();
       try {
         await ctx.hooks.openEditor(editor, draft);
@@ -176,7 +178,7 @@ async function configEdit(ctx: Context, named: string): Promise<void> {
       // Some editors hand the file to a window that's already open and return at once. If nothing changed
       // within a second, wait for the user.
       if (Date.now() - start < 1000 && edited.equals(orig)) {
-        await p.ask(name + " didn't wait for you. Save and close config.toml, then press enter.");
+        await p.ask(name + ' did not wait for editing to finish. Save and close config.toml, then press Enter.');
         edited = await readFile(draft);
       }
       if (wasOK && edited.equals(orig)) {
@@ -198,7 +200,7 @@ async function configEdit(ctx: Context, named: string): Promise<void> {
     const changes = configChanges(p, was, now!);
     if (!wasOK) p.ok('config.toml reads cleanly again.');
     else if (changes.length) printChanges(p, changes);
-    else p.line('No settings changed, only comments or layout.');
+    else p.line('No settings were changed (only comments or layout were modified).');
     try {
       config.validate(now!);
     } catch (err) {
@@ -280,8 +282,8 @@ export async function runConfig(ctx: Context, args: string[], showSecrets: boole
       b.close(
         applied
           ? ctx.fmt.good('Scheduled job reinstalled.') +
-              ctx.fmt.dim(' ' + args[1] + ' was already set to that, but the job was missing.')
-          : 'The scheduled job is reinstalled once the running backup finishes.',
+              ctx.fmt.dim(' ' + args[1] + ' was already set to this value, but the scheduled job was missing.')
+          : 'The scheduled job will be reinstalled once the active backup finishes.',
       );
       return;
     }

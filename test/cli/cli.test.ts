@@ -28,6 +28,7 @@ import { Repo, chunkKey } from '../../src/core/repo.js';
 import * as config from '../../src/core/config.js';
 import * as update from '../../src/platform/update.js';
 import { Memory } from '../support.js';
+import { copyCLI } from '../copy.js';
 import { APIError, PermafrostBackend, errConditionalUnsupported, request } from '../../src/core/storage.js';
 import { createServer, type AddressInfo } from 'node:net';
 import type { TestContext } from 'node:test';
@@ -321,7 +322,7 @@ test(
       // Collect every mismatch, so one run reports them all.
       if (actual.code !== ref.code) differences.push(name + ' code: ' + actual.code + ' expected ' + ref.code);
       for (const stream of ['stdout', 'stderr'] as const)
-        if (normalize(actual[stream]) !== normalize(ref[stream]))
+        if (normalize(actual[stream]) !== copyCLI(normalize(ref[stream])))
           differences.push(
             name +
               ' ' +
@@ -329,7 +330,7 @@ test(
               ': ' +
               JSON.stringify(normalize(actual[stream])) +
               ' expected ' +
-              JSON.stringify(normalize(ref[stream])),
+              JSON.stringify(copyCLI(normalize(ref[stream]))),
           );
     }
     assert.deepEqual(differences, []);
@@ -345,7 +346,7 @@ test('plain init opens the key page for a new Permafrost key and takes the paste
   const words = f.key.phrase().split(' ');
   const out = await f.must(['init'], lines('1', '2', 'pasted-key', f.src, '*.tmp', 'n', '', words[2], words[17]));
   assert.deepEqual(opened, ['https://getfro.st/perma']);
-  assert.match(out, /Get one at getfro\.st\/perma, then paste it below\./);
+  assert.match(out, /Obtain a key at getfro\.st\/perma, then paste it below\./);
   assert.equal((await config.loadFile()).storage.permafrost.token, 'pasted-key');
 });
 
@@ -356,9 +357,9 @@ test('setup errors carry the Permafrost server reason', () => {
     explainConnect(new APIError(status, code, detail || 'error', detail)).message;
   assert.equal(
     said(401, 'unauthorized', 'this access key was replaced by a newer one'),
-    "Permafrost didn't accept that access key. This access key was replaced by a newer one.",
+    'Permafrost rejected the access key. This access key was replaced by a newer one.',
   );
-  assert.match(said(401, 'unauthorized'), /Check you copied all of it/);
+  assert.match(said(401, 'unauthorized'), /Ensure the entire key was copied correctly/);
   assert.equal(
     said(403, 'read_only', 'uploads are paused until the account is active again'),
     "Permafrost won't store backups with that access key. Uploads are paused until the account is active again.",
@@ -956,7 +957,7 @@ test('an interrupted restore keeps its config and cache directories in the comma
   };
   const stopped = await f.invoke(['restore', 'latest', '--to', target]);
   assert.equal(stopped.code, 1);
-  assert.match(stopped.stderr, /To carry on from there, run(?: in PowerShell)?:/);
+  assert.match(stopped.stderr, /To resume, run(?: the following in PowerShell)?:/);
   assert.ok(
     stopped.stderr.includes(
       rerunCommand(snapshot.id, [], {
@@ -983,16 +984,20 @@ test('the macOS access hint names what macOS asks about', () => {
   const settings = 'Open System Settings > Privacy & Security > Full Disk Access and ';
   assert.match(
     accessHint(true, runtime, { TERM_PROGRAM: 'Apple_Terminal' }),
-    new RegExp(settings + 'add or switch on /Users/me/.+/node$'),
+    new RegExp(settings + 'add or enable /Users/me/.+/node\\.$'),
   );
   assert.match(
     accessHint(false, runtime, { TERM_PROGRAM: 'Apple_Terminal' }),
     new RegExp(
-      settings + 'allow Terminal, the app frost ran in\\. Scheduled backups need /Users/me/.+/node on that list too$',
+      settings +
+        'allow Terminal \\(the application running frost\\)\\. Scheduled backups also require /Users/me/.+/node on this list\\.$',
     ),
   );
-  assert.match(accessHint(false, runtime, { TERM_PROGRAM: 'iTerm.app' }), /allow iTerm, the app frost ran in/);
-  assert.match(accessHint(false, runtime, {}), /allow the terminal app frost ran in\. /);
+  assert.match(
+    accessHint(false, runtime, { TERM_PROGRAM: 'iTerm.app' }),
+    /allow iTerm \(the application running frost\)/,
+  );
+  assert.match(accessHint(false, runtime, {}), /allow the terminal application running frost\. /);
 });
 
 // Runs a command as if typed in a terminal, so `frost backup` can ask before it starts.
@@ -1149,12 +1154,15 @@ test('backups by hand and scheduled backups take turns with the backups', async 
   try {
     assert.match(
       (await f.invoke(['backup'])).stderr,
-      /a backup or restore is already running, try again when it's done/,
+      /a backup or restore operation is already in progress; try again when it completes/,
     );
     await rememberStart(true, new Date(2026, 9, 17, 15, 0));
     const busy = await f.invoke(['backup']);
     assert.equal(busy.code, 1);
-    assert.match(busy.stderr, /a scheduled backup is already running \(started 5m ago\), try again when it's done/);
+    assert.match(
+      busy.stderr,
+      /a scheduled backup is already running \(started 5m ago\); please try again once it completes/,
+    );
   } finally {
     await held.close();
   }
@@ -1250,9 +1258,9 @@ test('commands bring the scheduled job in line with hand edits to config.toml', 
   const wrong = await f.must(['status']);
   assert.match(
     wrong,
-    /^\nconfig\.toml changed, but updating the scheduled job failed: schedule\.time must be a 24-hour time/,
+    /^\nconfig\.toml changed, but updating the scheduled job failed: schedule\.time must use 24-hour HH:MM format/,
   );
-  assert.match(wrong, /next backup\s+schedule\.time must be a 24-hour time/);
+  assert.match(wrong, /next backup\s+schedule\.time must use 24-hour HH:MM format/);
   assert.equal(f.schedule.length, 2);
   await handEdit('time = "noon"', 'time = "09:30"');
 
@@ -1345,7 +1353,7 @@ test('a hand-edited storage location is checked the first time it is used', asyn
   const moved = await f.must(['status']);
   assert.match(
     moved,
-    /^\nconfig\.toml changed where backups go\. memory-2 has your frost\.repo but none of your snapshots\. Move chunks\/, snapshots\/ and trees\/ there too\.\n\n┌/,
+    /^\nconfig\.toml changed where backups go\. memory-2 contains frost\.repo but no snapshot data\. Transfer the chunks\/, snapshots\/, and trees\/ folders to complete the repository transfer\.\n\n┌/,
   );
   assert.ok(!(await f.must(['status'])).includes('config.toml changed'));
 
@@ -1357,7 +1365,7 @@ test('a hand-edited storage location is checked the first time it is used', asyn
   await handEdit('bucket = "backups"', 'bucket = "other"');
   assert.match(
     await f.must(['status']),
-    /^\nconfig\.toml changed where backups go\. Those are different backups from the ones in memory\./,
+    /^\nconfig\.toml changed where backups go\. These backups differ from the ones in memory\./,
   );
 
   // An empty location fails as before, with no line of its own.
@@ -1387,7 +1395,7 @@ test('a running scheduled backup holds back updating its job', async t => {
   await handEdit('every = "6h"', 'every = "daily"');
   assert.match(
     await f.must(['status']),
-    /^\nconfig\.toml changed\. The scheduled job updates once the running backup finishes\.\n\n┌/,
+    /^\nconfig\.toml changed\. The scheduled job will update after the active backup process completes\.\n\n┌/,
   );
   assert.ok(!(await f.must(['status'])).includes('config.toml changed'));
   assert.equal(f.schedule.length, 1);
@@ -1403,7 +1411,7 @@ test('a running scheduled backup holds back updating its job', async t => {
   const long = await rememberStart(true, new Date(2026, 9, 17, 16, 0));
   await handEdit('every = "daily"', 'every = "12h"');
   now = new Date(2026, 9, 18, 15, 0);
-  assert.match(await f.must(['status']), /The scheduled job updates once the running backup finishes\./);
+  assert.match(await f.must(['status']), /The scheduled job will update after the active backup process completes\./);
   assert.equal(f.schedule.length, 2);
   await rememberFinish(long, false, new Date(2026, 9, 18, 15, 5));
   await deadRun(new Date(2026, 9, 18, 15, 10));
@@ -1437,18 +1445,18 @@ test('config set, config edit and init wait for a running scheduled backup', asy
 
   assert.match(
     await f.must(['config', 'set', 'schedule.every', 'daily']),
-    /Saved\. The scheduled job updates once the running backup finishes\.\n/,
+    /Saved\. The scheduled job will update after the active backup process completes\.\n/,
   );
   assert.match(
     await f.must(['config', 'set', 'schedule.enabled', 'false']),
-    /Saved\. The scheduled job is removed once the running backup finishes\.\n/,
+    /Saved\. The scheduled job will be removed after the active backup process completes\.\n/,
   );
   f.hooks.openEditor = async (_command, file) => {
     await writeFile(file, (await readFile(file, 'utf8')).replace('enabled = false', 'enabled = true'));
   };
   assert.match(
     await f.must(['config', 'edit'], 'yes\n'),
-    /Saved\. The scheduled job updates once the running backup finishes\.\n/,
+    /Saved\. The scheduled job will update after the active backup process completes\.\n/,
   );
   assert.equal(f.schedule.length, 0);
   assert.equal(f.later.count, 4);
@@ -1458,7 +1466,7 @@ test('config set, config edit and init wait for a running scheduled backup', asy
   f.hooks.scheduleInstalled = async () => false;
   assert.match(
     await f.must(['config', 'set', 'schedule.enabled', 'true']),
-    /The scheduled job is reinstalled once the running backup finishes\.\n/,
+    /The scheduled job will be reinstalled once the active backup finishes\.\n/,
   );
   assert.equal(f.schedule.length, 0);
 
@@ -1518,7 +1526,7 @@ test('a scheduled backup that died is not named as running', async t => {
   const held = await Manifest.open(file);
   try {
     const busy = await f.invoke(['backup']);
-    assert.match(busy.stderr, /a backup or restore is already running, try again when it's done/);
+    assert.match(busy.stderr, /a backup or restore operation is already in progress; try again when it completes/);
   } finally {
     await held.close();
   }
@@ -1547,10 +1555,10 @@ test('only launchd and Task Scheduler jobs wait, and an undone change settles', 
   assert.equal(f.later.count, 0);
 
   f.hooks.scheduleKind = async () => 'launchd';
-  assert.match(await f.must(['config', 'set', 'schedule.enabled', 'false']), /is removed once the running backup/);
+  assert.match(await f.must(['config', 'set', 'schedule.enabled', 'false']), /will be removed after the active backup/);
   assert.match(
     await f.must(['config', 'set', 'schedule.enabled', 'true']),
-    /The scheduled job updates once the running backup/,
+    /The scheduled job will update after the active backup/,
   );
   assert.equal(f.later.count, 2);
   await rememberFinish(id, true, new Date(2026, 9, 17, 15, 45));

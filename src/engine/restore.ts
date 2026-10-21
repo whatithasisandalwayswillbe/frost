@@ -115,9 +115,10 @@ export async function besideFolder(
   id: string,
   include: string[] = [],
 ): Promise<{ dir: string; resume: boolean }> {
-  if (!base) throw new Error('the selection is on more than one drive');
-  if (isRoot(base)) throw new Error('the selection only shares the top of the drive');
-  if (!path.isAbsolute(base)) throw new Error('the snapshot is from a different kind of computer');
+  if (!base) throw new Error('the selected paths span across multiple drive volumes');
+  if (isRoot(base)) throw new Error('the selected paths share only the filesystem root directory');
+  if (!path.isAbsolute(base))
+    throw new Error('the snapshot uses a path format that is incompatible with this operating system');
   let root: RootDirectory;
   try {
     root = await openRoot(base, { trustedFinalLink: true });
@@ -142,7 +143,8 @@ export async function besideFolder(
 export async function canOverwrite(paths: string[]): Promise<void> {
   const seen = new Set<string>();
   for (const p of paths) {
-    if (!path.isAbsolute(p)) throw new Error('the snapshot is from a different kind of computer');
+    if (!path.isAbsolute(p))
+      throw new Error('the snapshot uses a path format that is incompatible with this operating system');
     let parent = path.dirname(p);
     if (seen.has(parent)) continue;
     seen.add(parent);
@@ -256,7 +258,7 @@ export async function restore(
         !(base && f.type === 'dir' && (base + '/').startsWith(f.path.replace(/\/$/, '') + '/')) &&
         included(f.path),
     );
-    if (!files.length) throw new Error('nothing in the snapshot matches the selected paths');
+    if (!files.length) throw new Error('no items in the snapshot match the specified paths');
     check(signal);
 
     // Check every destination before writing anything. Names are compared without case on Windows and
@@ -272,7 +274,9 @@ export async function restore(
       if (process.platform === 'darwin') rel = rel.normalize('NFD');
       if (destinations.has(rel)) throw new Error(`duplicate restore destination ${JSON.stringify(f.path)}`);
       if (opts.newTarget && rel.toLowerCase() === marker)
-        throw new Error(`can't restore ${JSON.stringify(f.path)} into a new folder: frost uses that name there`);
+        throw new Error(
+          `cannot restore ${JSON.stringify(f.path)} into a new folder: this name is reserved for frost's restore state`,
+        );
       if (!['file', 'dir', 'symlink'].includes(f.type)) throw new Error(`unknown file type ${JSON.stringify(f.type)}`);
       if ((f.size ?? 0) < 0 || !Number.isSafeInteger(f.size ?? 0))
         throw new Error(`negative file size for ${JSON.stringify(f.path)}`);
@@ -329,7 +333,7 @@ export async function restore(
           mark.writeFile(markerText(id, include));
           mark.sync();
         } else if (JSON.stringify(JSON.parse(readAll(mark, 1 << 20).toString())) !== markerText(id, include))
-          throw new Error('the restore folder holds an unfinished restore of something else');
+          throw new Error('the target directory contains an incomplete restore state from another operation');
       }
     } else if (opts.newTarget) throw new Error('new restore target is empty');
 

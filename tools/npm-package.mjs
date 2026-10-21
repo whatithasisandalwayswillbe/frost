@@ -32,7 +32,7 @@ const bin = `#!/usr/bin/env node
 // The frost command from the getfrost package. lib/npm.mjs installs frost on first use and runs it.
 const [major] = process.versions.node.split('.').map(Number);
 if (major < ${nodeFloor}) {
-  console.error('getfrost: installing frost needs Node.js ${nodeFloor} or newer, and this is ' + process.version);
+  console.error('getfrost: installing frost requires Node.js v${nodeFloor} or newer (detected version: ' + process.version + ')');
   process.exitCode = 1;
 } else {
   import('./lib/npm.mjs')

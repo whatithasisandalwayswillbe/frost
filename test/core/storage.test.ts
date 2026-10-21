@@ -236,7 +236,11 @@ test('Permafrost reference server contract, retries and paginated conformance', 
   const count = requests;
   await assert.rejects(
     bad.get('a'),
-    error => error instanceof APIError && error.unauthorized && /accept the access key: bad token/.test(error.message),
+    error =>
+      error instanceof APIError &&
+      error.unauthorized &&
+      error.detail === 'bad token' &&
+      error.message === 'the Permafrost access key was rejected: bad token (run `frost init` to reconfigure storage)',
   );
   assert.equal(requests - count, 1);
   assert.notEqual(bad.location(), backend.location());

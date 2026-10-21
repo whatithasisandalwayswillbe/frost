@@ -43,7 +43,7 @@ export function rerunCommand(
 
 export async function runRestore(ctx: Context, args: string[], flags: RestoreFlags): Promise<void> {
   if (!args.length) {
-    if (!ctx.inputTTY) throw new Error('say which snapshot to restore, e.g. `frost restore latest`');
+    if (!ctx.inputTTY) throw new Error('specify the target snapshot to restore, e.g., `frost restore latest`');
     if (ctx.hooks.browser) return ctx.hooks.browser(ctx);
     const { runBrowser } = await import('./tui.js');
     return runBrowser(ctx);
@@ -51,7 +51,7 @@ export async function runRestore(ctx: Context, args: string[], flags: RestoreFla
 
   // Exactly one destination flag must be given.
   const n = Number(flags.beside) + Number(flags.overwrite) + Number(!!flags.to);
-  if (!n) throw new Error('choose where to restore: --beside, --to <dir> or --overwrite');
+  if (!n) throw new Error('specify a restore destination using --beside, --to <dir>, or --overwrite');
   if (n > 1) throw new Error('choose only one of --beside, --to and --overwrite');
   if (flags.to) {
     flags.to = path.resolve(config.expand(flags.to));
@@ -82,7 +82,9 @@ export async function runRestore(ctx: Context, args: string[], flags: RestoreFla
       try {
         ({ dir: target, resume } = await besideFolder(base, snap.id, include));
       } catch (err) {
-        throw new Error("can't restore beside the originals: " + (err as Error).message + '. Use --to <dir> instead');
+        throw new Error(
+          'cannot restore alongside original files: ' + (err as Error).message + '. Use --to <dir> instead',
+        );
       }
     } else if (flags.to) ({ dir: target, resume } = await newRestoreFolder(flags.to, snap.id, include));
     else {
@@ -90,7 +92,7 @@ export async function runRestore(ctx: Context, args: string[], flags: RestoreFla
         await canOverwrite(include.length ? include : snap.paths);
       } catch (err) {
         throw new Error(
-          "can't overwrite the originals: " + (err as Error).message + '. Use --beside or --to <dir> instead',
+          'cannot overwrite original files: ' + (err as Error).message + '. Use --beside or --to <dir> instead',
         );
       }
     }
@@ -156,8 +158,8 @@ export async function runRestore(ctx: Context, args: string[], flags: RestoreFla
       if (err instanceof RestoreError && err.result.unfinished)
         throw new Error(
           err.message +
-            "\n\nWhat's restored so far was kept. To carry on from there, run" +
-            (rerun.startsWith('& ') ? ' in PowerShell' : '') +
+            '\n\nCompleted files and unfinished restore data have been preserved. To resume, run' +
+            (rerun.startsWith('& ') ? ' the following in PowerShell' : '') +
             ':\n\n  ' +
             rerun,
         );

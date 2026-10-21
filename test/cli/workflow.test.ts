@@ -17,6 +17,7 @@ import { chunkKey } from '../../src/core/repo.js';
 import { short } from '../../src/core/snapshot.js';
 import * as update from '../../src/platform/update.js';
 import { Memory } from '../support.js';
+import { copyCLI } from '../copy.js';
 
 // One recorded command, with its typed input, the version it ran as, and its output and error.
 interface Record {
@@ -327,8 +328,8 @@ test(
       const expected = references[i];
       const observed = actual[i];
       try {
-        assert.equal(normalize(observed.output), expected.output, expected.name + ' output');
-        assert.equal(normalize(observed.error), expected.error, expected.name + ' error');
+        assert.equal(normalize(observed.output), copyCLI(expected.output), expected.name + ' output');
+        assert.equal(normalize(observed.error), copyCLI(expected.error), expected.name + ' error');
       } catch (error) {
         differences.push((error as Error).message);
       }

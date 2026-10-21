@@ -239,7 +239,7 @@ test('busy files retry once, keep a clean earlier copy, and skip without one', a
   };
   const skipped = await f.engine.backup({ paths: [f.src] });
   assert.equal(skipped.snapshot.stats.skipped, 1);
-  assert.match(skipped.snapshot.warnings![0], /no earlier copy/);
+  assert.match(skipped.snapshot.warnings![0], /lacks a prior backup version/);
 });
 
 // On macOS, backup refuses to download files that are only in iCloud, so reading one fails with EDEADLK

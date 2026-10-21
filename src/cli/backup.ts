@@ -95,15 +95,15 @@ const terminalApps: Record<string, string> = {
 // run started in a terminal about that terminal app.
 export function accessHint(scheduled: boolean, runtime = process.execPath, env = process.env): string {
   const open =
-    'macOS blocks access to some folders until you allow it. Open System Settings > Privacy & Security > Full Disk Access and ';
-  if (scheduled) return open + 'add or switch on ' + runtime;
+    'macOS restricts access to certain folders until permission is granted. Open System Settings > Privacy & Security > Full Disk Access and ';
+  if (scheduled) return open + 'add or enable ' + runtime + '.';
   const app = terminalApps[env.TERM_PROGRAM ?? ''];
   return (
     open +
-    (app ? 'allow ' + app + ', the app frost ran in' : 'allow the terminal app frost ran in') +
-    '. Scheduled backups need ' +
+    (app ? 'allow ' + app + ' (the application running frost)' : 'allow the terminal application running frost') +
+    '. Scheduled backups also require ' +
     runtime +
-    ' on that list too'
+    ' on this list.'
   );
 }
 
@@ -127,7 +127,7 @@ export function printBackup(b: Block, res: BackupResult): void {
       'not found',
       f.caution(missingList(s.missing)) +
         '\n' +
-        f.dim("Skipped until they're back. If one moved, update it with `frost init`."),
+        f.dim("Skipped until they're back. If a path has moved, update it by running `frost init`."),
     );
   if (s.stats.skipped)
     b.warnRow(
@@ -137,7 +137,9 @@ export function printBackup(b: Block, res: BackupResult): void {
   if (s.stats.kept)
     b.warnRow(
       'kept',
-      f.caution(`${s.stats.kept} files kept changing while they were read, so the snapshot has their previous copy:`) +
+      f.caution(
+        `${plural(s.stats.kept, 'file')} continued changing while being read, so the snapshot saved ${s.stats.kept === 1 ? 'its previous version' : 'their previous versions'}:`,
+      ) +
         someOf(
           (s.kept ?? []).map(p => tildify(nativePath(p))),
           s.stats.kept,
@@ -158,16 +160,16 @@ export function printDryRun(b: Block, res: BackupResult, short: Map<string, stri
 
   if (res.unchanged) {
     b.close(
-      'Nothing has changed since snapshot ' +
+      'No changes detected since snapshot ' +
         f.bold(shortOf(short, s.id)) +
-        ', saved ' +
+        ' (saved ' +
         ago(s.time) +
-        ", so there's nothing to back up.",
+        '); nothing to back up.',
     );
     return;
   }
 
-  if (!res.planned.length) b.line('No new data to upload. Everything in these files is already stored.');
+  if (!res.planned.length) b.line('No new data to upload. All content in these files is already backed up.');
   else {
     b.line('Would upload new data from ' + plural(res.planned.length, 'file') + ':');
     b.gap();
@@ -182,7 +184,7 @@ export function printDryRun(b: Block, res: BackupResult, short: Map<string, stri
     );
   }
   b.gap();
-  b.close('Nothing was uploaded. Run without ' + f.bold('--dry-run') + ' to back up.');
+  b.close('Nothing was uploaded. Run without the ' + f.bold('--dry-run') + ' flag to perform the backup.');
 }
 
 // Opens the scheduled run log for appending through a retained folder handle. It refuses links and
@@ -322,7 +324,7 @@ async function busy(ctx: Context): Promise<Error> {
   return new Error(
     'a scheduled backup is already running (started ' +
       ago(runs.run!.started, now.getTime()) +
-      "), try again when it's done",
+      '); please try again once it completes',
   );
 }
 
@@ -500,7 +502,7 @@ export async function runBackup(ctx: Context, flags: BackupFlags): Promise<void>
       b.close(
         res.unchanged
           ? ctx.fmt.good('Already backed up.') +
-              ' Nothing has changed since snapshot ' +
+              ' No changes detected since snapshot ' +
               ctx.fmt.bold(shortOf(short, res.snapshot.id)) +
               ', saved ' +
               ago(res.snapshot.time) +

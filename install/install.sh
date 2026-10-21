@@ -44,7 +44,7 @@ latest_version() {
   v="${final##*/}"
   case "$v" in
     v*) printf '%s' "$v" ;;
-    *) die "couldn't find the latest release (set FROST_VERSION to pick one)" ;;
+    *) die "could not determine latest release version (set FROST_VERSION environment variable to select manually)" ;;
   esac
 }
 
@@ -112,7 +112,7 @@ if out=$(ssh-keygen -Y verify -f "$tmp/allowed_signers" -I frost-release -n file
 else
   case "$out" in
     *"illegal option"* | *"unknown option"* | *"usage:"*) die "need OpenSSH 8.1+ to verify the frost release signature" ;;
-    *) die "checksums.txt isn't signed by the frost release key. Don't install this." ;;
+    *) die "checksums.txt signature does not match official frost release key; installation aborted" ;;
   esac
 fi
 

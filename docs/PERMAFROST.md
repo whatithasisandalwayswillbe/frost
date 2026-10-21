@@ -135,6 +135,8 @@ Every non-2xx response has this body:
 
 frost shows `message` with the error, so write it for the person reading it.
 
+For `401`, the client preserves the server's reason and adds access-key guidance. The CLI starts with "the Permafrost access key was rejected" and directs the person to `frost init`. Setup starts with "Permafrost rejected the access key." If the server supplies no reason, the client says the key may be invalid or expired. This wording does not change the API response or its `message` field.
+
 ## Retries
 
 Clients retry `429` and `5xx` responses (except `507`) and network errors, up to 4 attempts in total, with exponential backoff starting at 500 ms. `Retry-After` is read as seconds, capped at 60. Retrying a conditional PUT after a lost response can return `412` even if the first request succeeded. The client then reports a failure rather than overwrite the object.

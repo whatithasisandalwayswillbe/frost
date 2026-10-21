@@ -12,7 +12,7 @@ import { openRoot, readAll, type RootDirectory, type RootFile } from '../platfor
 export const errLocked = new Error('another frost process is running against this repository');
 
 // Every replay failure gives the same advice: the manifest is only a cache.
-const corrupt = 'manifest cache is corrupt; remove it to rebuild from storage';
+const corrupt = 'manifest cache is corrupted; delete it to force rebuilding state from storage';
 
 // What the manifest remembers about a source file. When the size and mtime still match and every
 // chunk is known, backup reuses the chunk list without reading the file.
@@ -111,7 +111,7 @@ export class Manifest {
       if (stat.size > 1024 * 1024 * 1024) throw new Error('manifest cache exceeds 1 GiB');
       let data = readAll(handle, 1024 * 1024 * 1024);
       if (data.length && data[0] !== 123)
-        throw new Error('manifest cache format is unsupported; use a separate cache path');
+        throw new Error('unsupported manifest cache format; specify an alternate cache path');
 
       // A crash mid-write can leave a partial last line. Its transaction never took effect, so
       // dropping it is safe.

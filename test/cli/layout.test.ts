@@ -14,6 +14,7 @@ import type { ColorProfile } from '../../src/cli/terminal.js';
 import { defaultConfig } from '../../src/core/config.js';
 import { shorten, short, emptyStats, type Snapshot } from '../../src/core/snapshot.js';
 import { Engine, type BackupResult } from '../../src/engine/index.js';
+import { copyCLI } from '../copy.js';
 
 // One recorded layout. The name picks a scenario in the last test, and profile picks the colour profile.
 interface Reference {
@@ -248,7 +249,7 @@ test(
             b.close(
               r.unchanged
                 ? f.good('Already backed up.') +
-                    ' Nothing has changed since snapshot ' +
+                    ' No changes detected since snapshot ' +
                     f.bold(short(r.snapshot.id)) +
                     ', saved ' +
                     ago(stamp) +
@@ -261,7 +262,11 @@ test(
         // Ages depend on today's date, so they're replaced before comparing. Every mismatch is collected, so one
         // run reports them all.
         try {
-          assert.equal(output.replace(/\d+d ago/g, '<age> ago'), record.output, record.profile + ' ' + record.name);
+          assert.equal(
+            output.replace(/\d+d ago/g, '<age> ago'),
+            copyCLI(record.output),
+            record.profile + ' ' + record.name,
+          );
         } catch (error) {
           differences.push((error as Error).message);
         }

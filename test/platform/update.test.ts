@@ -306,7 +306,7 @@ test(
 test('tampered archive or failed probe leaves the installed version untouched', async t => {
   const f = await fixture(t, b => Buffer.concat([b, Buffer.from('tamper')]));
   const oldManifest = await readFile(path.join(f.root, 'manifest.json'));
-  await assert.rejects(installRelease(await latest(f.options), f.root, f.options), /signed checksum/);
+  await assert.rejects(installRelease(await latest(f.options), f.root, f.options), /checksum verification/);
   assert.equal(await readFile(path.join(f.root, 'runtime/bin/node'), 'utf8'), 'old runtime');
   assert.equal(JSON.parse(await readFile(path.join(f.root, 'current.json'), 'utf8')).version, 'v1.0.0');
   assert.deepEqual(await readFile(path.join(f.root, 'manifest.json')), oldManifest);
@@ -485,7 +485,7 @@ test('a release with a runtime below the floor says to reinstall and changes not
   const f = await fixture(t, undefined, 'v25.0.0');
   await assert.rejects(
     installRelease(await latest(f.options), f.root, f.options),
-    /package manifest mismatch\. This frost may be too old to read v1\.2\.3, so reinstall it: https:\/\/github\.com\/whatithasisandalwayswillbe\/frost#install/,
+    /package manifest mismatch\. This frost installation may not support the v1\.2\.3 package format\. Reinstall frost: https:\/\/github\.com\/whatithasisandalwayswillbe\/frost#install/,
   );
   assert.equal(JSON.parse(await readFile(path.join(f.root, 'current.json'), 'utf8')).version, 'v1.0.0');
   assert.equal(await readFile(path.join(f.root, 'runtime/bin/node'), 'utf8'), 'old runtime');

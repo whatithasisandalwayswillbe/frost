@@ -8,7 +8,7 @@ import { location, type Backend } from '../core/storage.js';
 import { Context } from './context.js';
 import { Block, printable } from './format.js';
 import { explainConnect, probe } from './connect.js';
-import { loadKnown, movable, moveHint } from './known.js';
+import { loadKnown, movable } from './known.js';
 
 // Snapshots or trees without a frost.repo mean backups were moved without it.
 async function hasObjects(b: Backend, signal?: AbortSignal): Promise<boolean> {
@@ -28,7 +28,9 @@ export async function checkStorageChange(
 ): Promise<boolean> {
   const problem = (s: string) => {
     if (mode === 'refuse')
-      throw new Error(s + '\n\nNothing was saved. To change it without this check, use `frost config edit`');
+      throw new Error(
+        s + '\n\nNothing was saved. To modify this setting without this storage check, use `frost config edit`',
+      );
     out.warn(out.fmt.caution(out.fmt.errorText(s)));
     return true;
   };
@@ -74,17 +76,22 @@ export async function checkStorageChange(
       if (mode === 'notice') return false;
       if (await hasObjects(newB!, signal))
         return problem(
-          where + " has frost backups but no frost.repo. If you moved them, frost.repo didn't come along.",
+          where +
+            ' contains frost backup files but is missing frost.repo. Ensure frost.repo was transferred along with data files.',
         );
       let msg = 'There are no backups in ' + where + '.';
       if (known.shown && known.shown !== where) msg += ' Yours are in ' + known.shown + '.';
-      if (movable(known.storage ?? was, now)) msg += ' To use them there, ' + moveHint(where) + ' first.';
-      return problem(msg + ' To start a separate set of backups there, run `frost init`.');
+      if (movable(known.storage ?? was, now))
+        msg +=
+          ' To use backups in this location, ensure the full directory (frost.repo, chunks/, snapshots/, and trees/) is moved to ' +
+          where +
+          '.';
+      return problem(msg + ' To initialize a separate set of backups here, run `frost init`.');
     }
     if (e === errWrongKey)
       return unopenable(
         where +
-          ' has backups made with a different key. To use them, run `frost key import` with their recovery phrase.',
+          ' contains backups created with a different key. To access them, run `frost key import` with the corresponding recovery phrase.',
       );
     return unopenable("couldn't check " + where + ': ' + explainConnect(e).message);
   }
@@ -105,7 +112,8 @@ export async function checkStorageChange(
     } catch {}
     if (have)
       return problem(
-        where + ' has your frost.repo but none of your snapshots. Move chunks/, snapshots/ and trees/ there too.',
+        where +
+          ' contains frost.repo but no snapshot data. Transfer the chunks/, snapshots/, and trees/ folders to complete the repository transfer.',
       );
   }
 
@@ -118,9 +126,9 @@ export async function checkStorageChange(
 
   if (known.repo_id && repo.info.id !== known.repo_id)
     out.warn(
-      'Those are different backups from the ones in ' +
+      'These backups differ from the ones in ' +
         printable(known.shown ?? '') +
-        '. frost will show their snapshots instead. Yours stay where they are.',
+        '. frost will switch focus to display these snapshots; previous backups remain unaffected.',
     );
   return true;
 }

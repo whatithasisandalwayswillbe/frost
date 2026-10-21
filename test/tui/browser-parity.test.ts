@@ -11,7 +11,7 @@ import { Arcade } from '../../src/tui/arcade.js';
 import { type Snapshot, type Config } from '../../src/tui/types.js';
 import { strip, type Style } from '../../src/tui/render.js';
 import { visualCells, assertProfiles } from './ansi.js';
-import { referenceDir as dir } from './references.js';
+import { reference, referenceDir as dir } from './references.js';
 
 // Restore phases in the order the captures number them.
 const phases = ['confirm', 'picking', 'typing', 'ready', 'running', 'done'] as const;
@@ -144,7 +144,7 @@ for (const file of readdirSync(dir).filter(s => s.endsWith('.json')))
       Math.max(...(f.snaps ?? []).map((s: Snapshot) => Date.parse(s.time)), Date.parse(f.state.verify.time)) + 1000;
     try {
       const actual = m.view();
-      const expected = readFileSync(new URL(file.replace('.json', '.ans'), dir), 'utf8');
+      const expected = reference(file.slice(0, -5));
       const a = strip(actual).split('\n');
       const b = strip(expected).split('\n');
 

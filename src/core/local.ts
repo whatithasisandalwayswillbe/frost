@@ -90,10 +90,10 @@ export class LocalBackend implements Backend {
     if (error.kind === 'notfound') return errNotFound;
     if (error.kind === 'exists') return errExists;
     if (error.kind === 'missing')
-      return new MissingRootError(`${error.message} isn't there. Connect the drive and try again`);
+      return new MissingRootError(`${error.message} not found. Connect the required drive and try again`);
     if (error.kind === 'unsupported')
       return new UnsafeFolderError(
-        `${this.#root} is on a filesystem that can't create a file only when its name is free, which frost needs to keep two computers from overwriting each other's backups. Use a folder on a drive formatted as NTFS, APFS, ext4, Btrfs or XFS`,
+        `${this.#root} resides on a filesystem that cannot safely create backup metadata. frost requires atomic file creation without replacing existing files to prevent conflicting updates across machines. Choose a filesystem that supports this, such as NTFS, APFS, ext4, Btrfs, or XFS`,
       );
     return Object.assign(new Error(error.message), error.code ? { code: error.code } : {});
   }

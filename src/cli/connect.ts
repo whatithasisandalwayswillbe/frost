@@ -26,21 +26,26 @@ import { printable, tildify } from './format.js';
 // Turns a typed recovery phrase into a key, with a specific message for each way it can be wrong.
 export function phraseKey(phrase: string): Key {
   const parts = phrase.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (parts.length !== 24) throw new Error(`that's ${parts.length} words, a recovery phrase has 24`);
+  if (parts.length !== 24)
+    throw new Error(
+      `entered ${parts.length} ${parts.length === 1 ? 'word' : 'words'}, but a recovery phrase must contain exactly 24 words`,
+    );
   for (let i = 0; i < parts.length; i++)
-    if (!words.includes(parts[i])) throw new Error(`word ${i + 1} isn't a recovery phrase word. Check its spelling`);
+    if (!words.includes(parts[i])) throw new Error(`word ${i + 1} is not a valid recovery word; check the spelling`);
   try {
     return Key.fromPhrase(parts.join(' '));
   } catch (e) {
     if (/checksum/.test((e as Error).message))
-      throw new Error("all the words are real, but they don't make a valid phrase. Check their order and spelling");
+      throw new Error(
+        'all words are valid individually, but together they do not form a valid recovery phrase; check their order and spelling',
+      );
     throw e;
   }
 }
 
 // A failed lookup of the default Permafrost server names its host, which means nothing to the person. The
 // message says Permafrost instead.
-export const cantReachPermafrost = "can't reach Permafrost, check your internet connection and try again";
+export const cantReachPermafrost = 'cannot reach Permafrost; check your internet connection and try again';
 export function permafrostLookupFailed(error: unknown): boolean {
   const err = error as NodeJS.ErrnoException & { hostname?: string };
   return (err?.code === 'ENOTFOUND' || err?.code === 'EAI_AGAIN') && err.hostname === defaultPermafrostHost;
@@ -49,8 +54,8 @@ export function permafrostLookupFailed(error: unknown): boolean {
 // What to do without an SSH client. Windows has one as an optional feature, and other systems as a package.
 const noClient =
   process.platform === 'win32'
-    ? "frost needs the OpenSSH client, which isn't installed. Add it in Settings, under System > Optional features."
-    : "frost needs the OpenSSH client (ssh), which isn't installed. Install it with your system's package manager, often as openssh-client.";
+    ? 'frost requires the OpenSSH client, which is not installed. Enable it under Settings > System > Optional features.'
+    : 'frost requires the OpenSSH client (ssh), which is not installed. Install it using your package manager (typically openssh-client).';
 
 // Advice for a self-hosted server's SSH problems. A server that refuses frost's key, or one this computer hasn't
 // seen yet, becomes ConnectError('login'), which setup answers by offering to add the key.
@@ -58,14 +63,23 @@ function explainSSH(err: SSHError): Error {
   if (err.problem === 'login' || err.problem === 'unknownhost') return new ConnectError('login', sentence(err.message));
   if (err.problem === 'hostkey' || err.problem === 'garbled') return new ConnectError('address', sentence(err.message));
   if (err.problem === 'nosftp')
-    return new ConnectError('address', "That server doesn't offer SFTP. Turn it on in the server's SSH settings.");
+    return new ConnectError(
+      'address',
+      "That server does not support SFTP. Enable SFTP in the server's SSH configuration.",
+    );
   if (err.problem === 'noclient') return new Error(noClient);
   if (err.code === 'ENOTFOUND')
-    return new ConnectError('address', "Can't find that server. Check the address and your network.");
+    return new ConnectError('address', 'Cannot locate the server. Check the address and your network connection.');
   if (err.code === 'ECONNREFUSED')
-    return new ConnectError('address', "Nothing answered at that address. Check it's right and that SSH is on.");
+    return new ConnectError(
+      'address',
+      'No response from that address. Verify the address and ensure the SSH service is running.',
+    );
   if (['ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH'].includes(err.code ?? ''))
-    return new ConnectError('address', "The server didn't answer. Check the address and that the server is on.");
+    return new ConnectError(
+      'address',
+      'The server did not respond. Verify the address and ensure the server is online.',
+    );
   return err;
 }
 
@@ -79,17 +93,20 @@ export function explainConnect(error: unknown): Error {
   if (err instanceof MissingRootError || err instanceof UnsafeFolderError)
     return new ConnectError('folder', sentence(err.message));
   if (error instanceof SFTPStatusError && error.status === 3)
-    return new ConnectError('folder', "The server won't let frost write in that folder. Check its permissions.");
+    return new ConnectError('folder', 'The server denied write access to that folder. Check folder permissions.');
   if (/goes through a link|is a link in an untrusted folder/.test(err.message ?? ''))
-    return new ConnectError('folder', "frost doesn't follow links or junctions to a backup folder. Use its real path.");
+    return new ConnectError(
+      'folder',
+      'frost does not follow symbolic links or directory junctions for backup folders. Specify a real path without links or junctions.',
+    );
   if (err.code === 'EACCES' || err.code === 'EPERM')
-    return new ConnectError('folder', "frost can't write in that folder. Check its permissions.");
+    return new ConnectError('folder', 'frost cannot write to that folder. Check directory permissions.');
   if (err.code === 'EROFS') return new ConnectError('folder', 'That drive is read-only.');
   if (err.code === 'ENOSPC') return new Error('the drive is full');
 
   if (err === errConditionalUnsupported)
     return new Error(
-      "This storage doesn't support conditional writes (If-None-Match: *). frost needs them to keep two machines from overwriting backup metadata. Choose storage that supports them.",
+      'This storage provider does not support conditional writes (If-None-Match: *). frost requires this feature to prevent conflicting updates to backup metadata across multiple machines. Choose storage that supports conditional writes.',
     );
 
   // Permafrost's own message says why it refused, when it sent one.
@@ -98,7 +115,8 @@ export function explainConnect(error: unknown): Error {
     if (err.status === 401)
       return new ConnectError(
         'key',
-        "Permafrost didn't accept that access key." + (why || ' Check you copied all of it, or it may have expired.'),
+        'Permafrost rejected the access key.' +
+          (why || ' Ensure the entire key was copied correctly, or verify that it has not expired.'),
       );
     if (err.status === 403)
       return new ConnectError('key', "Permafrost won't store backups with that access key." + why);
@@ -107,16 +125,25 @@ export function explainConnect(error: unknown): Error {
 
   // Each S3 error code points at the setup answer that's most likely wrong.
   const codes: Record<string, [string, string]> = {
-    InvalidAccessKeyId: ['key', "That access key ID wasn't recognised. Check you copied all of it."],
-    SignatureDoesNotMatch: ['secret', "The secret key doesn't match the access key ID. Check you copied all of it."],
-    NoSuchBucket: ['bucket', "There's no bucket with that name. Check the name, or create the bucket first."],
+    InvalidAccessKeyId: ['key', 'Access key ID not recognized. Ensure the entire ID was copied correctly.'],
+    SignatureDoesNotMatch: [
+      'secret',
+      'The secret key does not match the access key ID. Ensure both were copied correctly.',
+    ],
+    NoSuchBucket: ['bucket', 'No bucket found with that name. Verify the name or create the bucket first.'],
     AccessDenied: [
       'key',
-      "That key doesn't have the bucket permissions frost needs. Allow reading, listing, writing and deleting objects.",
+      'The provided key lacks necessary bucket permissions. Ensure read, list, write, and delete permissions are granted.',
     ],
-    AuthorizationHeaderMalformed: ['address', 'The bucket is in a different region. Check the region or endpoint.'],
-    InvalidRegion: ['address', 'The bucket is in a different region. Check the region or endpoint.'],
-    PermanentRedirect: ['address', 'The bucket is in a different region. Check the region or endpoint.'],
+    AuthorizationHeaderMalformed: [
+      'address',
+      'The bucket is located in a different region. Verify the specified region or endpoint.',
+    ],
+    InvalidRegion: ['address', 'The bucket is located in a different region. Verify the specified region or endpoint.'],
+    PermanentRedirect: [
+      'address',
+      'The bucket is located in a different region. Verify the specified region or endpoint.',
+    ],
   };
   if (err.code && codes[err.code]) return new ConnectError(...codes[err.code]);
 
@@ -125,16 +152,16 @@ export function explainConnect(error: unknown): Error {
   if (err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN')
     return new ConnectError(
       'address',
-      "Can't find " +
+      'Cannot resolve ' +
         (err as NodeJS.ErrnoException & { hostname?: string }).hostname +
-        '. Check the address and your internet connection.',
+        '. Verify the address and your internet connection.',
     );
   if (err.code === 'ECONNREFUSED')
-    return new ConnectError('address', "Nothing answered at that address. Check it's right.");
+    return new ConnectError('address', 'No response from that address. Verify that the address is correct.');
   if (err.code && /CERT|SELF_SIGNED|UNABLE_TO_VERIFY/.test(err.code))
-    return new ConnectError('address', "The server's certificate isn't valid for that address.");
+    return new ConnectError('address', "The server's TLS certificate is not valid for that address.");
   if (err.name === 'TimeoutError' || err.code === 'ETIMEDOUT')
-    return new Error("the storage didn't answer in time, check your internet connection and try again");
+    return new Error('the storage host timed out; check your internet connection and try again');
   return err;
 }
 
@@ -217,7 +244,7 @@ export async function opensRepo(ctx: Context, b: Backend, key: Key, parentSignal
   try {
     await Repo.open(b, key, signal);
   } catch (err) {
-    if (err === errWrongKey) throw new Error("that's a valid phrase, but not the one for these backups");
+    if (err === errWrongKey) throw new Error('that recovery phrase is valid, but it does not match these backups');
     throw explainConnect(err);
   }
 }
@@ -233,7 +260,7 @@ export async function installKey(ctx: Context, s: Storage): Promise<void> {
     '\n' +
       ctx.fmt.dim("Adding frost's SSH key to ") +
       printable(s.sftp.host) +
-      ctx.fmt.dim('. ssh asks for your password there; frost never sees it.') +
+      ctx.fmt.dim('. SSH handles authentication directly; frost never sees or stores your password.') +
       '\n\n',
   );
   await ctx.hooks.sshInstall(s.sftp.host, s.sftp.port, line);
