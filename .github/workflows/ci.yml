@@ -30,7 +30,16 @@ jobs:
       - run: npm run format:check
       - run: npm run check
       - run: npm test
-      - run: npm audit
+      - name: npm audit
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          for attempt in 1 2 3; do
+            [ "$attempt" = 1 ] || sleep 30
+            npm audit --fetch-timeout=60000 2>&1 | tee "$RUNNER_TEMP/audit.log" && exit 0
+            grep -q 'audit endpoint returned an error' "$RUNNER_TEMP/audit.log" || exit 1
+          done
+          exit 1
 
   shell:
     runs-on: ubuntu-latest
