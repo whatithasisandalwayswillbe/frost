@@ -1,6 +1,6 @@
 // Sound effects for the hidden game. Clips are decoded and shaped once, then rendered into a few variants with
 // slightly different pitch and tempo, so a play does no audio work. On macOS a helper process keeps one audio engine
-// running and plays the variants from memory. On Windows and Linux frost mixes the variants itself and streams them to
+// running and plays the variants from memory. On Windows and Linux Frost mixes the variants itself and streams them to
 // winmm's waveOut or to libpulse. When the output can't start, the game stays silent. FROST_NO_SOUND turns it all off.
 import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
@@ -506,7 +506,7 @@ function bindPulse(): PulseAPI {
 }
 
 // Opens a stream through libpulse, the client library for PulseAudio and for PipeWire's PulseAudio server. JavaScript
-// can't run on libpulse's threads, so nothing registers a callback. A threaded main loop runs the connection, and frost
+// can't run on libpulse's threads, so nothing registers a callback. A threaded main loop runs the connection, and Frost
 // polls its state and the stream's writable space while holding the loop's lock. Opening gives up after 3 seconds.
 export async function openPulse(
   api: PulseAPI = bindPulse(),
@@ -549,7 +549,7 @@ export async function openPulse(
   };
 
   try {
-    // Flag 1 is PA_CONTEXT_NOAUTOSPAWN, so frost never starts a sound server.
+    // Flag 1 is PA_CONTEXT_NOAUTOSPAWN, so Frost never starts a sound server.
     const failure = 'could not connect to the sound server';
     context = api.pa_context_new(api.pa_threaded_mainloop_get_api(loop), 'frost');
     if (!context || api.pa_context_connect(context, null, 1, null) < 0 || api.pa_threaded_mainloop_start(loop) < 0)

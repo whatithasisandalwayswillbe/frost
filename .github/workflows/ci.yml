@@ -72,7 +72,7 @@ jobs:
         run: node tools/smoke.mjs .work/packages/frost_0.0.0-ci_linux_amd64.tar.gz
 
   # The getfrost npm package runs on the user's Node.js, so its tests also run on the oldest one it supports,
-  # nodeFloor in tools/npm-package.mjs. frost itself builds with the pinned runtime first.
+  # nodeFloor in tools/npm-package.mjs. Frost itself builds with the pinned runtime first.
   npm-package:
     runs-on: ubuntu-latest
     steps:

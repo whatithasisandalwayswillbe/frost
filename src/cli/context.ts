@@ -55,7 +55,7 @@ export interface Hooks {
   openEditor: (command: string[], file: string) => Promise<void>;
   openBrowser: (url: string) => Promise<void>;
   reveal: (file: string) => Promise<void>;
-  // frost's own SSH key for self-hosted storage, made on first use, as its public authorized_keys line.
+  // Frost's own SSH key for self-hosted storage, made on first use, as its public authorized_keys line.
   sshKey: () => Promise<string>;
   // Runs ssh in the terminal to add a line to the server's authorized_keys. ssh asks for the password itself.
   sshInstall: (host: string, port: number, line: string) => Promise<void>;
@@ -70,7 +70,7 @@ export interface Hooks {
   setup?: (ctx: Context, cfg: config.Config, existing: boolean, local?: Key) => Promise<void>;
 }
 
-// The script frost runs itself with. An installed package uses its launcher, which always runs the active
+// The script Frost runs itself with. An installed package uses its launcher, which always runs the active
 // version. A source build uses this main.js directly.
 const frostScript = () =>
   process.env.FROST_APP_ROOT
@@ -282,7 +282,7 @@ export class Context {
   }
 
   // Opens the repository and its manifest. If the storage has no repository or a different key, the error
-  // says where this machine's backups were last seen. `lockWait` is how long to wait for another frost
+  // says where this machine's backups were last seen. `lockWait` is how long to wait for another Frost
   // process to finish with the manifest.
   async openApp(lockWait = 1000): Promise<App> {
     const cfg = await config.load();
@@ -297,7 +297,7 @@ export class Context {
       // A missing folder already names itself, like a drive that isn't connected.
       if (e instanceof MissingRootError) throw e;
       if (e === errNotInitialized)
-        throw await cantOpen(`${backend} has no frost repository`, cfg.storage, backend, true);
+        throw await cantOpen(`${backend} has no Frost repository`, cfg.storage, backend, true);
       if (e === errWrongKey)
         throw await cantOpen(
           `the local encryption key does not match the backups in ${backend} (verify using \`frost key verify\`)`,
@@ -309,7 +309,7 @@ export class Context {
     }
     await rememberStorage(cfg.storage, backend, repo.info.id);
 
-    // The manifest's lock keeps a second frost process out of this repository's cache.
+    // The manifest's lock keeps a second Frost process out of this repository's cache.
     let manifest: Manifest;
     try {
       manifest = await Manifest.open(
@@ -318,7 +318,7 @@ export class Context {
         this.signal,
       );
     } catch (e) {
-      if ((e as Error).message.includes('another frost process')) throw errBusy;
+      if ((e as Error).message.includes('another Frost process')) throw errBusy;
       throw e;
     }
 

@@ -1,4 +1,4 @@
-// Installs an unpacked frost package for the current user. It checks the package, stages it, probes the new runtime
+// Installs an unpacked Frost package for the current user. It checks the package, stages it, probes the new runtime
 // and app, then activates the version by writing current.json last. package.mjs copies it into every package, and
 // install.sh runs it from there as `install.mjs <package folder> <launcher folder>`.
 import { readFile, readdir, mkdir, mkdtemp, cp, rename, open, rm, stat, lstat } from 'node:fs/promises';
@@ -248,7 +248,7 @@ try {
   await rename(path.join(stage, 'current.json'), path.join(root, 'current.json'));
   await syncDir(root);
 
-  // A running old runtime can't be deleted yet. frost removes leftover .old runtimes when it next starts.
+  // A running old runtime can't be deleted yet. Frost removes leftover .old runtimes when it next starts.
   if (oldRuntime) await rm(oldRuntime).catch(() => {});
   console.log('Installed ' + path.join(bin, process.platform === 'win32' ? 'frost.cmd' : 'frost'));
 } finally {

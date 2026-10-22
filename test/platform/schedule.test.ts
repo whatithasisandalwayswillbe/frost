@@ -52,7 +52,7 @@ test('scheduler definitions preserve interval, quoting, and logging', () => {
     "0 3,9,15,21 * * * '/usr/local/bin/frost' backup --scheduled --config-dir '/it'\\''s here' >> '/home/me/.cache/frost/frost.log' 2>&1 # frost-backup",
   );
 
-  // Only frost's own line is removed, never a line that merely mentions the marker.
+  // Only Frost's own line is removed, never a line that merely mentions the marker.
   assert.equal(stripCron('0 1 * * * other\n' + cronLine(job) + '\n'), '0 1 * * * other\n');
   assert.equal(stripCron("* * * * * echo '# frost-backup'\n"), "* * * * * echo '# frost-backup'\n");
   assert.equal(stripCron('# See # frost-backup\n'), '# See # frost-backup\n');
@@ -122,7 +122,7 @@ test('the run before and after a moment follow the schedule', () => {
   assert.deepEqual(runBefore(sixHours, local(17, 2, 59)), local(16, 21));
   assert.deepEqual(runAfter(sixHours, local(17, 3)), local(17, 9));
 });
-// Installed frost runs as the bundled runtime plus a launch script, which must stay two arguments.
+// Installed Frost runs as the bundled runtime plus a launch script, which must stay two arguments.
 test('signed runtime and script remain separate scheduler arguments', () => {
   const j = { ...job, binary: '/app/runtime/bin/node', script: '/app/launch.mjs' };
   assert.match(launchdPlist(j), /<string>\/app\/runtime\/bin\/node<\/string>\n\t\t<string>\/app\/launch.mjs<\/string>/);
@@ -236,7 +236,7 @@ test('Windows task preserves registration, least privilege, schedule, and paths'
   assert.deepEqual([...utf16File('a').subarray(0, 2)], [255, 254]);
   assert.equal(windowsQuote('a\\"b\\'), '"a\\\\\\"b\\\\"');
 });
-// A Linux install with a stub runner and a private home. Lingering reports "no", so frost enables
+// A Linux install with a stub runner and a private home. Lingering reports "no", so Frost enables
 // it, marks the timer as the owner of that change, and disables it again on removal.
 test('scheduler tests never run the real scheduler', async t => {
   const home = await mkdtemp(path.join(os.tmpdir(), 'frost-schedule-test-'));
@@ -410,7 +410,7 @@ test('a systemd timer counts as installed only while it is active', async t => {
   assert.equal(await scheduler.installed(), false);
 });
 
-test('a crontab mention of frost is not an installed job', async () => {
+test('a crontab mention of Frost is not an installed job', async () => {
   for (const [text, installed] of [
     ["* * * * * echo '# frost-backup'\n", false],
     ['# See # frost-backup in the documentation\n', false],
@@ -423,7 +423,7 @@ test('a crontab mention of frost is not an installed job', async () => {
   }
 });
 
-test("cron install and removal preserve comments that end with frost's marker", async () => {
+test("cron install and removal preserve comments that end with Frost's marker", async () => {
   const comment = '# See # frost-backup\n';
   let crontab = comment;
   const runner: Runner = async (cmd, args, input) => {
@@ -444,7 +444,7 @@ test("cron install and removal preserve comments that end with frost's marker", 
   assert.equal(await scheduler.installed(), false);
 });
 
-// Switching frost off under Login Items unloads the launchd job and leaves its plist behind, so an
+// Switching Frost off under Login Items unloads the launchd job and leaves its plist behind, so an
 // installed job needs both the plist and a loaded service.
 test('a launchd job counts as installed only while launchd has it loaded', async t => {
   const home = await mkdtemp(path.join(os.tmpdir(), 'frost-launchd-test-'));

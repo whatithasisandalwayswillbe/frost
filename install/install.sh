@@ -1,11 +1,11 @@
 #!/bin/sh
-# Installs the latest frost release.
+# Installs the latest Frost release.
 #
 #   curl -fsSL https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.sh | sh
 #
 # Works on macOS, Linux (including WSL) and Windows through Git Bash, MSYS2
 # or Cygwin. Downloads the package for your platform, checks that the
-# release's checksums.txt was signed by the frost release key, checks the
+# release's checksums.txt was signed by the Frost release key, checks the
 # download against it, and installs a launcher and its bundled runtime.
 #
 # Environment:
@@ -91,17 +91,17 @@ if [ "$os" = windows ]; then
 fi
 archive="frost_${num}_${os}_${arch}.${ext}"
 base="${FROST_BASE_URL:-https://github.com/$REPO/releases/download/$version}"
-has ssh-keygen || die "need OpenSSH 8.1+ to verify the frost release signature"
+has ssh-keygen || die "need OpenSSH 8.1+ to verify the Frost release signature"
 
 # Download and verify.
 tmp=$(mktemp -d 2>/dev/null || mktemp -d -t frost)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-say "Downloading frost $version for $os/$arch"
+say "Downloading Frost $version for $os/$arch"
 fetch "$base/$archive" "$tmp/$archive" || die "download failed: $base/$archive"
 fetch "$base/checksums.txt" "$tmp/checksums.txt" || die "download failed: $base/checksums.txt"
 
-# The signature proves checksums.txt came from the frost release key, not
+# The signature proves checksums.txt came from the Frost release key, not
 # just from whoever controls the download.
 [ -n "$RELEASE_KEY" ] || die "the release signing key is missing"
 fetch "$base/checksums.txt.sig" "$tmp/checksums.txt.sig" || die "download failed: $base/checksums.txt.sig"
@@ -111,8 +111,8 @@ if out=$(ssh-keygen -Y verify -f "$tmp/allowed_signers" -I frost-release -n file
   say "Signature ok"
 else
   case "$out" in
-    *"illegal option"* | *"unknown option"* | *"usage:"*) die "need OpenSSH 8.1+ to verify the frost release signature" ;;
-    *) die "checksums.txt signature does not match official frost release key; installation aborted" ;;
+    *"illegal option"* | *"unknown option"* | *"usage:"*) die "need OpenSSH 8.1+ to verify the Frost release signature" ;;
+    *) die "checksums.txt signature does not match official Frost release key; installation aborted" ;;
   esac
 fi
 

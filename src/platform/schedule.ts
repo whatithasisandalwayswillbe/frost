@@ -33,7 +33,7 @@ const systemdUnit = 'frost-backup';
 const cronMarker = '# frost-backup';
 const taskName = 'frost backup';
 
-// Appended to the timer file when frost turned lingering on, so removing the timer knows to
+// Appended to the timer file when Frost turned lingering on, so removing the timer knows to
 // turn it off again. Deleting the timer by hand loses this record.
 export const lingerMarker =
   "# frost turned on lingering (loginctl enable-linger) so this timer runs while you're logged out, and turns it off when it removes the timer.";
@@ -76,7 +76,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const hoursOf = (t: Times) => Math.trunc(t.every / hour);
 
 // The hours of the day that runs under a day apart start in: the configured hour, and every
-// interval before and after it. frost's intervals all divide a day evenly.
+// interval before and after it. Frost's intervals all divide a day evenly.
 export function runHours(t: Times): number[] {
   const h = Math.max(1, hoursOf(t));
   const hours: number[] = [];
@@ -123,8 +123,8 @@ export function onCalendar(t: Times): string {
   return at(h <= 1 ? '*' : runHours(t).map(pad).join(','));
 }
 
-// Cron has no way to catch up a missed run. With catch-up on, it starts frost every 15 minutes from
-// the configured minute instead, and frost decides whether a backup is due or was missed. Weekly
+// Cron has no way to catch up a missed run. With catch-up on, it starts Frost every 15 minutes from
+// the configured minute instead, and Frost decides whether a backup is due or was missed. Weekly
 // days count from 0 for Sunday.
 export function cronSpec(t: Times, catchUp = false): string {
   const h = hoursOf(t);
@@ -218,7 +218,7 @@ function isFrostCronLine(line: string): boolean {
   return !value.startsWith('#') && value.endsWith(' ' + cronMarker);
 }
 
-// Drops frost's line from a crontab and keeps everything else, with one trailing newline, or
+// Drops Frost's line from a crontab and keeps everything else, with one trailing newline, or
 // returns '' when nothing is left.
 export function stripCron(text: string): string {
   const keep = text
@@ -361,8 +361,8 @@ export class Scheduler {
     ]);
   }
 
-  // Works out whether frost owns lingering, given the old timer's text. A marker there means it
-  // already does. Lingering that's already on belongs to someone else. Otherwise frost turns it
+  // Works out whether Frost owns lingering, given the old timer's text. A marker there means it
+  // already does. Lingering that's already on belongs to someone else. Otherwise Frost turns it
   // on and claims it. enabled says whether this call turned it on. Any failure claims nothing.
   async claimLinger(old: string): Promise<{ ours: boolean; enabled: boolean }> {
     if (old.includes(lingerMarker)) return { ours: true, enabled: false };
@@ -378,7 +378,7 @@ export class Scheduler {
     }
   }
 
-  // Turns lingering off, best effort, only when the removed timer carried frost's marker.
+  // Turns lingering off, best effort, only when the removed timer carried Frost's marker.
   async releaseLinger(old: string): Promise<void> {
     if (old.includes(lingerMarker)) {
       try {
@@ -496,7 +496,7 @@ export class Scheduler {
   async installed(): Promise<boolean> {
     switch (await this.kind()) {
       case 'launchd':
-        // Switching frost off under Login Items unloads the job but leaves its plist, so launchd must
+        // Switching Frost off under Login Items unloads the job but leaves its plist, so launchd must
         // still have it loaded too.
         if (!(await exists(this.plistPath))) return false;
         try {

@@ -158,7 +158,7 @@ export function compressionData(): Map<string, Buffer> {
     {
       name: 'source.js',
       mode: 0o644,
-      data: readFileSync(new URL('../../../test/copy/manifest-compression.fixture', import.meta.url)),
+      data: readFileSync(new URL('../../../test/fixtures/manifest-compression.fixture', import.meta.url)),
     },
     { name: 'data.xml', mode: 0o644, data: xml },
   ]) as Buffer;

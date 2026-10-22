@@ -1,5 +1,5 @@
-// Tests for the getfrost npm package: what tools/npm-package.mjs puts in it, and how its frost command installs the
-// signed release for its version from a loopback server and hands commands to the installed frost.
+// Tests for the getfrost npm package: what tools/npm-package.mjs puts in it, and how its Frost command installs the
+// signed release for its version from a loopback server and hands commands to the installed Frost.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -149,7 +149,7 @@ test('the frost command installs its signed release once, then hands every comma
   const b = await bootstrap(t, r);
   await b.main(['status', '--verify'], b.options);
 
-  assert.deepEqual(b.calls.log, [`Downloading frost ${r.version} for linux/amd64`, 'Signature ok', 'Checksum ok']);
+  assert.deepEqual(b.calls.log, [`Downloading Frost ${r.version} for linux/amd64`, 'Signature ok', 'Checksum ok']);
   assert.equal(b.calls.installs.length, 1);
   const [node, script, stage, launchers] = b.calls.installs[0];
   assert.equal(node, path.join(stage, 'runtime', 'bin', 'node'));
@@ -159,14 +159,14 @@ test('the frost command installs its signed release once, then hands every comma
   await assert.rejects(readdir(stage), { code: 'ENOENT' });
   assert.deepEqual(b.calls.handoffs, [[runtimePath(b.root), path.join(b.root, 'launch.mjs'), 'status', '--verify']]);
 
-  // Installed now, so the next command goes straight to frost without asking the server anything.
+  // Installed now, so the next command goes straight to Frost without asking the server anything.
   const requests = r.counter.requests;
   await b.main(['backup'], b.options);
   assert.equal(r.counter.requests, requests);
   assert.equal(b.calls.installs.length, 1);
   assert.deepEqual(b.calls.handoffs[1], [runtimePath(b.root), path.join(b.root, 'launch.mjs'), 'backup']);
 
-  // frost updates itself, so an older package never installs over a newer frost.
+  // Frost updates itself, so an older package never installs over a newer Frost.
   await b.main(['status'], { ...b.options, version: 'v0.0.9' });
   assert.equal(b.calls.installs.length, 1);
   assert.equal(r.counter.requests, requests);
@@ -174,7 +174,7 @@ test('the frost command installs its signed release once, then hands every comma
 
 test('the frost command refuses a bad signature, a damaged archive or a failed install', async t => {
   for (const [options, message] of [
-    [{ signer: signingKey() }, /isn't signed by the frost release key/],
+    [{ signer: signingKey() }, /isn't signed by the Frost release key/],
     [{ tamper: true }, /checksum mismatch for frost_0\.1\.0_linux_amd64\.tar\.gz/],
   ] as const) {
     const b = await bootstrap(t, await release(t, options));
@@ -188,9 +188,9 @@ test('the frost command refuses a bad signature, a damaged archive or a failed i
   assert.equal(b.calls.handoffs.length, 0);
 });
 
-// Runs the generated bin in a child process with a private data folder. The installed "frost" there is a launch.mjs
+// Runs the generated bin in a child process with a private data folder. The installed "Frost" there is a launch.mjs
 // that prints its arguments and exits with 3, started by the Node.js running the tests.
-test('the frost command runs the installed frost with its arguments and exit code', async t => {
+test('the frost command runs the installed Frost with its arguments and exit code', async t => {
   const { out } = await built(t);
   const work = await workspace(t);
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: work, XDG_DATA_HOME: work, LOCALAPPDATA: work };
@@ -240,6 +240,6 @@ test('the frost command says which Node.js it needs', async t => {
   assert.equal(result.code, 1);
   assert.equal(
     result.stderr,
-    'getfrost: installing frost requires Node.js v22 or newer (detected version: v18.20.0)\n',
+    'getfrost: installing Frost requires Node.js v22 or newer (detected version: v18.20.0)\n',
   );
 });

@@ -7,5 +7,5 @@
   "configured": false,
   "code": 1,
   "stdout": "",
-  "stderr": "\nerror: say which snapshot to restore, e.g. `frost restore latest`\n\n"
+  "stderr": "\nerror: specify the target snapshot to restore, e.g., `frost restore latest`\n\n"
 }

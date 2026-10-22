@@ -465,8 +465,7 @@ export const windowTop = (cur: number, n: number, h: number): number =>
 export const sentence = (s: string): string => {
   s = s.trim();
   if (!s) return '';
-  // frost stays lowercase, even at the start of a sentence.
-  return (/^frost\b/.test(s) ? s : s[0].toUpperCase() + s.slice(1)) + (/[.?!]$/.test(s) ? '' : '.');
+  return s[0].toUpperCase() + s.slice(1) + (/[.?!]$/.test(s) ? '' : '.');
 };
 
 // Shows the home folder as ~ and cuts long paths from the left. On Windows the home folder matches
@@ -514,7 +513,7 @@ export function ago(t: string | Date, now = Date.now()): string {
 
 const marks = new Map<boolean, string>();
 
-// The frost wordmark, or the icebreaker one for the game, read once from assets. It keeps the blank row of spaces
+// The Frost wordmark, or the icebreaker one for the game, read once from assets. It keeps the blank row of spaces
 // at the bottom of each asset file.
 export function rawWordmark(game = false): string {
   let mark = marks.get(game);

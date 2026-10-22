@@ -1,5 +1,5 @@
 // A small SFTP version 3 server for tests, behind a fake ssh process. It serves a real temporary folder and
-// follows OpenSSH's sftp-server where frost depends on it: RENAME refuses an existing target, the hardlink,
+// follows OpenSSH's sftp-server where Frost depends on it: RENAME refuses an existing target, the hardlink,
 // posix-rename, fsync, statvfs and limits extensions, errno mapped to status codes, and folder listings
 // that use lstat. Built from the SFTP draft, independently of src/core/sftp.ts.
 

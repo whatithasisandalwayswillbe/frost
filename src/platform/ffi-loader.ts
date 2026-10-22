@@ -1,5 +1,5 @@
 // Loads Node's built-in node:ffi module for the native filesystem, console and audio bindings.
-// The types cover only the parts frost uses.
+// The types cover only the parts Frost uses.
 import { createRequire } from 'node:module';
 
 export type FFIType =

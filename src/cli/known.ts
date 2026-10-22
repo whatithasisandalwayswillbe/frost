@@ -113,9 +113,9 @@ const quoteValue = (v: string): string => (!v || /[ \t'"]/.test(v) ? JSON.string
 // backups itself, so with the key still working, they were most likely deleted using it.
 function goneHint(s: config.Storage): string {
   if (s.backend === 'local')
-    return 'Expected backups were not found at this location. If another drive is mounted here, reattach the original drive. If files were moved, return all repository contents or update frost with the new path.';
+    return 'Expected backups were not found at this location. If another drive is mounted here, reattach the original drive. If files were moved, return all repository contents or update Frost with the new path.';
   if (s.backend !== 'permafrost')
-    return 'Expected backups were not found at this location. If files were moved, return all repository contents or update frost with the new location.';
+    return 'Expected backups were not found at this location. If files were moved, return all repository contents or update Frost with the new location.';
   if (!isDefaultPermafrost(s.permafrost.url))
     return 'Expected backups were not found at this location. Consult your server administrator regarding the missing repository.';
   return (

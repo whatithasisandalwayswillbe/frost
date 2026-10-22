@@ -13,8 +13,8 @@ modification, are permitted provided that the following conditions are met:
    this list of conditions and the following disclaimer in the documentation
    and/or other materials provided with the distribution.
 
-3. Neither the name "frost", the names of the copyright holder or its
-   contributors, nor any frost logos, wordmarks, or other brand assets, may
+3. Neither the name "Frost", the names of the copyright holder or its
+   contributors, nor any Frost logos, wordmarks, or other brand assets, may
    be used to endorse or promote products derived from this software without
    specific prior written permission.
 
@@ -30,12 +30,11 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------------
-This License covers ONLY frost's own source code, build tooling, packaging,
+This License covers ONLY Frost's own source code, build tooling, packaging,
 and documentation in this repository.
 
-Third-party Go modules used by this project are governed by their respective
-upstream licenses.
+The bundled Node.js runtime and third-party npm packages used by this project
+are governed by their respective upstream licenses.
 
-The "frost" name, logos, wordmarks, and brand assets are NOT licensed for use
-in derived or third-party products; see condition 3 above. See NOTICE for
-details.
+The "Frost" name, logos, wordmarks, and brand assets are NOT licensed for use
+in derived or third-party products; see condition 3 above.

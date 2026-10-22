@@ -1,4 +1,4 @@
-// Remembers the scheduled job frost installed, when it installed it and when the last full backup ran, one
+// Remembers the scheduled job Frost installed, when it installed it and when the last full backup ran, one
 // record per config folder. A scheduled run reads it to skip a backup that already happened and to catch up
 // one that was missed, `frost status` to say when the next one is due, and `frost backup` to mention a
 // scheduled backup that's due or just finished. Comparing config.toml with the recorded job shows when the

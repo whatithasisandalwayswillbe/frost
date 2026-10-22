@@ -17,7 +17,7 @@ import { Engine } from '../dist/src/engine/index.js';
 
 const workspace = fileURLToPath(new URL('../', import.meta.url));
 
-// Unpacks a .tar.gz or .zip package into folder with frost's own archive reader. Every entry must land inside the
+// Unpacks a .tar.gz or .zip package into folder with Frost's own archive reader. Every entry must land inside the
 // folder, with no symlinked folder on the way, and existing files are never overwritten.
 export async function unpack(archive, folder) {
   await mkdir(folder, { recursive: true, mode: 0o700 });
@@ -125,7 +125,7 @@ export async function smokeFixture(work) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 
   // Point a default config at the server, with verification sampling and automatic updates off. Automatic
-  // backups stay on, because a scheduled run does nothing without them. No job is installed, since frost only
+  // backups stay on, because a scheduled run does nothing without them. No job is installed, since Frost only
   // touches one it recorded installing.
   const cfg = defaultConfig();
   cfg.paths = [source];
@@ -209,7 +209,7 @@ async function smoke(archive) {
     // The package must report the version it was built for, not the `dev` of a source build.
     const version = JSON.parse(await readFile(path.join(app, 'current.json'), 'utf8')).version;
     const reported = await command(['--version']);
-    if (reported.trim() !== `frost version ${version}`)
+    if (reported.trim() !== `Frost version ${version}`)
       throw new Error(`Packaged version is ${JSON.stringify(reported.trim())}, expected ${version}`);
 
     // The scheduled backup saves the only snapshot. A manual backup of the same files must not save another.

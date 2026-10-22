@@ -34,7 +34,7 @@ const defaultPrefix = 'frost';
 export const intervals = ['hourly', '2h', '3h', '4h', '6h', '8h', '12h', 'daily', 'weekly'];
 // The days schedule.day accepts, in the order schedulers number them from 0.
 export const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-export const errNoConfig = new Error("frost isn't set up yet, run `frost init`");
+export const errNoConfig = new Error("Frost isn't set up yet, run `frost init`");
 
 export function defaultConfig(): Config {
   return {
@@ -174,7 +174,7 @@ export function keyPath(): string {
   return path.join(dir(), 'key');
 }
 
-// The SSH key frost logs in to a self-hosted server with. Its public half sits next to it with a .pub ending.
+// The SSH key Frost logs in to a self-hosted server with. Its public half sits next to it with a .pub ending.
 export function sshKeyPath(): string {
   return path.join(dir(), 'ssh', 'frost_ed25519');
 }
@@ -287,7 +287,7 @@ export async function save(c: Config): Promise<void> {
 export function render(c: Config): string {
   const q = (value: string | string[]) =>
     Array.isArray(value) ? '[' + value.map(v => JSON.stringify(v)).join(', ') + ']' : JSON.stringify(value);
-  return `# frost config. Edit by hand or with \`frost config set\`.
+  return `# Frost config. Edit by hand or with \`frost config set\`.
 # Nothing in here is secret except the storage credentials. Your encryption
 # key lives in a separate file next to this one, and the SSH key for a
 # self-hosted server lives in the ssh folder.
@@ -319,7 +319,7 @@ catch_up = ${c.schedule.catch_up}
 sample = ${c.verify.sample}
 
 [update]
-# Install new frost releases after a scheduled backup, at most every 20 hours.
+# Install new Frost releases after a scheduled backup, at most every 20 hours.
 # false only tells you about them in frost status. Either way, frost update
 # installs one now.
 auto = ${c.update.auto}
@@ -348,7 +348,7 @@ token = ${q(c.storage.permafrost.token)}
 
 [storage.sftp]
 # Your server's SSH address, like "me@nas.local", or a Host from your SSH
-# config. frost logs in with its own key, in the ssh folder.
+# config. Frost logs in with its own key, in the ssh folder.
 host = ${q(c.storage.sftp.host)}
 # 0 uses the port from your SSH config, or 22.
 port = ${c.storage.sftp.port}

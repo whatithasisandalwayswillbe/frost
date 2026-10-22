@@ -165,7 +165,7 @@ test('WAV decoder validates structure and preserves PCM', async () => {
   await player.close();
 });
 
-// A stand-in for a child process. It records what frost writes and exits when its input ends, unless it's stuck,
+// A stand-in for a child process. It records what Frost writes and exits when its input ends, unless it's stuck,
 // when only kill() stops it.
 function fakeProcess(stuck = false) {
   const stdin = new PassThrough();
@@ -186,7 +186,7 @@ function fakeProcess(stuck = false) {
   return { child: child as HelperProcess & typeof child, chunks };
 }
 
-// The macOS helper, recording each message frost sends.
+// The macOS helper, recording each message Frost sends.
 function fakeHelper(stuck = false) {
   const { child } = fakeProcess(stuck);
   const sent: unknown[][] = [];

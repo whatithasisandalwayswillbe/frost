@@ -84,7 +84,7 @@ export async function runStatus(ctx: Context, verify: boolean, all: boolean): Pr
   } catch (err) {
     if (!(err instanceof StorageError)) throw err;
     const b = ctx.fmt.block();
-    b.open('frost', ctx.version);
+    b.open('Frost', ctx.version);
     b.gap();
     b.failRow('storage', ctx.fmt.error('problem: ') + ctx.fmt.errorText(err));
     const k = await loadKnown();
@@ -102,7 +102,7 @@ export async function runStatus(ctx: Context, verify: boolean, all: boolean): Pr
     const f = ctx.fmt;
     const b = f.block();
     let verifyFailed = false;
-    b.open('frost', ctx.version + '  ' + printable(String(e.repo.backend)) + '  key ' + e.repo.key.fingerprint());
+    b.open('Frost', ctx.version + '  ' + printable(String(e.repo.backend)) + '  key ' + e.repo.key.fingerprint());
     b.gap();
 
     // --verify checks a sample now. A failure is reported at the end, after the rest of the status.

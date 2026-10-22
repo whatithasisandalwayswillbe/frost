@@ -5,7 +5,7 @@ import { release } from 'node:os';
 
 export type ColorProfile = 'ascii' | 'ansi' | 'ansi256' | 'truecolor';
 
-// Every colour frost prints, with its nearest 16-colour code, 256-colour code and RGB value. The four lists
+// Every colour Frost prints, with its nearest 16-colour code, 256-colour code and RGB value. The four lists
 // are matched by position, so keep them in step.
 const hexes = [
   '#f2efe7', // TUI pri

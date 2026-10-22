@@ -144,7 +144,7 @@ export async function run(argv: string[], ctx = new Context()): Promise<void> {
     return;
   }
   if (bool(p, 'version')) {
-    ctx.fmt.write('frost version ' + ctx.version + '\n');
+    ctx.fmt.write('Frost version ' + ctx.version + '\n');
     return;
   }
 
@@ -160,7 +160,7 @@ export async function run(argv: string[], ctx = new Context()): Promise<void> {
   // leaves its flag out, like backup's --scheduled.
   if (p.command === 'config' && bool(p, 'after-backup')) return syncAfterBackup(ctx);
 
-  // Changes made to config.toml outside frost take effect before the command runs. init writes its own
+  // Changes made to config.toml outside Frost take effect before the command runs. init writes its own
   // settings, `config get` prints only the value for scripts, and a scheduled backup applies them itself.
   const action = p.args[0] ?? '';
   if (p.command !== 'init' && !(p.command === 'config' && action === 'get') && !bool(p, 'scheduled'))

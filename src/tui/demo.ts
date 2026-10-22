@@ -174,7 +174,7 @@ export async function breakThings(engine: Engine, memory: MemoryBackend): Promis
 // access key is 'demo', and nothing is saved.
 function demoSetupDeps(latency: number): SetupDeps {
   const wait = (signal?: AbortSignal) => delay(Math.max(latency, 600), undefined, { signal });
-  // A self-hosted server refuses frost's SSH key until one of the ways of adding it has run.
+  // A self-hosted server refuses Frost's SSH key until one of the ways of adding it has run.
   let keyAdded = false;
   return {
     connect: async (storage, signal, options) => {
@@ -182,7 +182,7 @@ function demoSetupDeps(latency: number): SetupDeps {
       if (storage.backend === 'permafrost' && storage.permafrost.token !== 'demo')
         throw new Error("that access key wasn't accepted, check you copied all of it (the demo key is: demo)");
       if (storage.backend === 'sftp' && !keyAdded && !options?.acceptNewHostKey)
-        throw new ConnectError('login', storage.sftp.host + " didn't accept frost's SSH key.");
+        throw new ConnectError('login', storage.sftp.host + " didn't accept Frost's SSH key.");
       return RepoState.New;
     },
     addKey: async () => {

@@ -245,7 +245,7 @@ test('SFTP retries a dropped connection on a new session, up to four attempts', 
 
 test('SFTP reports why ssh stopped and only retries network trouble', async t => {
   const cases: [string, string, string | undefined, RegExp][] = [
-    ['me@nas: Permission denied (publickey,password).', 'login', undefined, /didn't accept frost's SSH key/],
+    ['me@nas: Permission denied (publickey,password).', 'login', undefined, /didn't accept Frost's SSH key/],
     [
       'No ED25519 host key is known for nas and you have requested strict checking.\nHost key verification failed.',
       'unknownhost',

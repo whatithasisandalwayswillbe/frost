@@ -8,5 +8,5 @@
   "configured": false,
   "code": 1,
   "stdout": "",
-  "stderr": "\nerror: this frost was built from source, so it can't update itself. Rebuild it, or install a release with the installer: https://github.com/whatithasisandalwayswillbe/frost#install\n\n"
+  "stderr": "\nerror: this Frost build comes from source and cannot update itself. Rebuild from source or reinstall via the official package: https://github.com/whatithasisandalwayswillbe/frost#install\n\n"
 }

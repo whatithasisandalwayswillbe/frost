@@ -1,6 +1,6 @@
-// The frost command in the getfrost npm package. frost runs on its own bundled runtime, so on first use this installs
-// the signed release for its own version into frost's usual app folder, then hands every command to that install.
-// It runs on whatever Node.js npm or pnpm uses, and checks the release with copies of frost's updater modules in
+// The Frost command in the getfrost npm package. Frost runs on its own bundled runtime, so on first use this installs
+// the signed release for its own version into Frost's usual app folder, then hands every command to that install.
+// It runs on whatever Node.js npm or pnpm uses, and checks the release with copies of Frost's updater modules in
 // lib/, so the signature, checksum and package checks are the updater's own. tools/npm-package.mjs builds the package
 // and copies this file to lib/npm.mjs.
 import { spawn } from 'node:child_process';
@@ -36,12 +36,12 @@ function runInstaller(program, args) {
 }
 
 // Downloads, verifies and unpacks the release, then runs its install.mjs with its own runtime, the way install.sh
-// does. The launchers install.mjs writes go in frost/bin beside the app folder; this package's frost is the one on
+// does. The launchers install.mjs writes go in frost/bin beside the app folder; this package's Frost is the one on
 // PATH.
 async function install(version, root, options, log) {
   const target = options.platform ?? (await platform(options.runner));
   const checks = { ...options, platform: target };
-  log(`Downloading frost ${version} for ${target.os}/${target.arch}`);
+  log(`Downloading Frost ${version} for ${target.os}/${target.arch}`);
   const signed = await release(version, checks);
   log('Signature ok');
   const archive = await download(
@@ -75,8 +75,8 @@ async function install(version, root, options, log) {
   }
 }
 
-// process.execve replaces this process with frost, so signals and the exit code are frost's own. Before Node 26.1 a
-// failed execve aborted the process instead of throwing, so older versions start frost as a child instead.
+// process.execve replaces this process with Frost, so signals and the exit code are Frost's own. Before Node 26.1 a
+// failed execve aborted the process instead of throwing, so older versions start Frost as a child instead.
 function canExec() {
   const [major, minor] = process.versions.node.split('.').map(Number);
   return (
@@ -84,8 +84,8 @@ function canExec() {
   );
 }
 
-// Runs the installed frost with this terminal. The terminal sends Ctrl+C to frost as well, so this process ignores it
-// and waits. Other signals are passed on, and frost's exit code or signal becomes this process's.
+// Runs the installed Frost with this terminal. The terminal sends Ctrl+C to Frost as well, so this process ignores it
+// and waits. Other signals are passed on, and Frost's exit code or signal becomes this process's.
 function handoff(node, script, args) {
   if (canExec()) process.execve(node, [node, script, ...args]);
   return new Promise((resolve, reject) => {
@@ -110,7 +110,7 @@ function handoff(node, script, args) {
   });
 }
 
-// Installs this package's frost when the app folder has no frost or an older one, then runs the command. Tests pass
+// Installs this package's Frost when the app folder has no Frost or an older one, then runs the command. Tests pass
 // the updater's options (baseURL, trustedKey, allowHTTP, platform, backoff) and replace the app folder, version,
 // installer, handoff and log.
 export async function main(args = process.argv.slice(2), options = {}) {
@@ -120,6 +120,6 @@ export async function main(args = process.argv.slice(2), options = {}) {
   const log = options.log ?? (line => process.stderr.write(line + '\n'));
   const current = await installedVersion(root);
   if (!current || newer(version, current)) await install(version, root, options, log);
-  if (!(await installedVersion(root))) throw new Error(`frost isn't installed in ${root}`);
+  if (!(await installedVersion(root))) throw new Error(`Frost isn't installed in ${root}`);
   return (options.handoff ?? handoff)(runtimePath(root), path.join(root, 'launch.mjs'), args);
 }

@@ -338,7 +338,7 @@ export const providers: Provider[] = [
       {
         question: 'Which folder on the server?',
         value: 'frost',
-        help: 'Use a folder in your home directory, or enter a full path. frost creates the backup folder if needed. The folder containing it must already exist.',
+        help: 'Use a folder in your home directory, or enter a full path. Frost creates the backup folder if needed. The folder containing it must already exist.',
         name: 'folder',
         about: 'folder',
         check: checkFolder,
@@ -386,7 +386,7 @@ export const choices: { name: string; note: string; providers: number[] }[] = [
 // The choice a provider belongs to.
 export const choiceOf = (provider: number): number => choices.findIndex(c => c.providers.includes(provider));
 
-// The index of the Self-hosted provider, whose connections can need frost's SSH key added first.
+// The index of the Self-hosted provider, whose connections can need Frost's SSH key added first.
 export const selfHosted = choices[2].providers[0];
 
 // Returns the index of the provider a config uses. A config without a backend, or with one setup doesn't

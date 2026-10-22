@@ -6,6 +6,6 @@
   "input": "x\n",
   "configured": false,
   "code": 1,
-  "stdout": "\n┌  frost setup\n│\n│  Where should backups go?\n│    [1] Permafrost (one access key, nothing else to set up)\n│    [2] S3-compatible bucket (AWS, Backblaze B2, Cloudflare R2, Wasabi, Ceph, ...)\n│    [3] Self-hosted (your server over SSH)\n│    [4] Local drive (USB or internal disk)\n│  > │    type a number from 1 to 4\n│  > ",
+  "stdout": "\n┌  Frost setup\n│\n│  Where would you like to store your backups?\n│    [1] Permafrost (one access key, nothing else to set up)\n│    [2] S3-compatible bucket (AWS, Backblaze B2, Cloudflare R2, Wasabi, Ceph, ...)\n│    [3] Self-hosted (your server over SSH)\n│    [4] Local drive (USB or internal disk)\n│  > │    type a number from 1 to 4\n│  > ",
   "stderr": "\nerror: no answer (input closed)\n\n"
 }

@@ -28,7 +28,6 @@ import { Repo, chunkKey } from '../../src/core/repo.js';
 import * as config from '../../src/core/config.js';
 import * as update from '../../src/platform/update.js';
 import { Memory } from '../support.js';
-import { copyCLI } from '../copy.js';
 import { APIError, PermafrostBackend, errConditionalUnsupported, request } from '../../src/core/storage.js';
 import { createServer, type AddressInfo } from 'node:net';
 import type { TestContext } from 'node:test';
@@ -36,7 +35,7 @@ import type { TestContext } from 'node:test';
 // Joins lines and ends with a newline, the way the CLI prints them.
 const lines = (...parts: string[]) => parts.join('\n') + '\n';
 
-// Points frost's config and cache at private folders and stores backups in memory under a fixed key. The hooks
+// Points Frost's config and cache at private folders and stores backups in memory under a fixed key. The hooks
 // record schedule changes and refuse to open a browser, go online or install anything.
 async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'frost-cli-test-'));
@@ -322,7 +321,7 @@ test(
       // Collect every mismatch, so one run reports them all.
       if (actual.code !== ref.code) differences.push(name + ' code: ' + actual.code + ' expected ' + ref.code);
       for (const stream of ['stdout', 'stderr'] as const)
-        if (normalize(actual[stream]) !== copyCLI(normalize(ref[stream])))
+        if (normalize(actual[stream]) !== normalize(ref[stream]))
           differences.push(
             name +
               ' ' +
@@ -330,7 +329,7 @@ test(
               ': ' +
               JSON.stringify(normalize(actual[stream])) +
               ' expected ' +
-              JSON.stringify(copyCLI(normalize(ref[stream]))),
+              JSON.stringify(normalize(ref[stream])),
           );
     }
     assert.deepEqual(differences, []);
@@ -418,7 +417,7 @@ test('init, dry run, backup, unchanged check, status, restore, settings, phrase 
   const f = await fixture(t);
   const init = await f.must(['init'], f.answers);
   assert.match(init, /Correct\./);
-  assert.match(init, /frost is set up/);
+  assert.match(init, /Frost is set up/);
   assert.equal(f.schedule[0].schedule.every, '6h');
 
   // A dry run lists what would go up, leaving out skipped files, and uploads nothing.
@@ -487,7 +486,7 @@ test('config edit saves original bytes and comments only after yes, repairs pars
   assert.match(await readFile(config.configPath(), 'utf8'), /# mine/);
   assert.ok(!(await readdir(f.conf)).some(n => n.startsWith('.frost-edit-')));
 
-  // The first edit doesn't parse, so frost offers to reopen it. The second edit fixes it.
+  // The first edit doesn't parse, so Frost offers to reopen it. The second edit fixes it.
   const saved = await readFile(config.configPath(), 'utf8');
   let n = 0;
   f.hooks.openEditor = async (_command, file) => {
@@ -607,7 +606,7 @@ test('scheduled log retains its file during parent replacement and refuses an ou
   assert.equal(await readFile(path.join(moved, 'frost.log'), 'utf8'), 'confined\n');
   assert.deepEqual(await readdir(outside), ['sentinel']);
 
-  // Opening through the link now fails. frost follows a link only from a folder others can't write to, so loosen
+  // Opening through the link now fails. Frost follows a link only from a folder others can't write to, so loosen
   // the folder's mode. On Windows it refuses every link.
   if (process.platform !== 'win32') await chmod(f.root, 0o777);
   try {
@@ -694,7 +693,7 @@ test('updates check permissions first, do not install on --check, and automatic 
   assert.equal(installs, 1);
   assert.equal((await update.loadState(updateStatePath())).installed, 'v0.2.0');
 
-  // When frost can't replace itself, update fails before it asks for the latest release.
+  // When Frost can't replace itself, update fails before it asks for the latest release.
   hooks.canReplace = async () => {
     throw new Error("can't write");
   };
@@ -715,7 +714,7 @@ test('updates check permissions first, do not install on --check, and automatic 
 });
 
 // The installer and the updater read the last word of `--version` as the version, so it has to stay last. An installed
-// frost applies that rule to every later release.
+// Frost applies that rule to every later release.
 test('--version ends with the version', async t => {
   const f = await fixture(t);
   let out = '';
@@ -990,14 +989,14 @@ test('the macOS access hint names what macOS asks about', () => {
     accessHint(false, runtime, { TERM_PROGRAM: 'Apple_Terminal' }),
     new RegExp(
       settings +
-        'allow Terminal \\(the application running frost\\)\\. Scheduled backups also require /Users/me/.+/node on this list\\.$',
+        'allow Terminal \\(the application running Frost\\)\\. Scheduled backups also require /Users/me/.+/node on this list\\.$',
     ),
   );
   assert.match(
     accessHint(false, runtime, { TERM_PROGRAM: 'iTerm.app' }),
-    /allow iTerm \(the application running frost\)/,
+    /allow iTerm \(the application running Frost\)/,
   );
-  assert.match(accessHint(false, runtime, {}), /allow the terminal application running frost\. /);
+  assert.match(accessHint(false, runtime, {}), /allow the terminal application running Frost\. /);
 });
 
 // Runs a command as if typed in a terminal, so `frost backup` can ask before it starts.
@@ -1230,7 +1229,7 @@ test('scheduled runs recognise a refused connection from the real storage client
   assert.deepEqual(waits, [10_000, 20_000, 40_000, 80_000, 150_000]);
 });
 
-// Replaces text in config.toml the way a text editor would, outside frost.
+// Replaces text in config.toml the way a text editor would, outside Frost.
 async function handEdit(from: string, to: string) {
   const file = config.configPath();
   const raw = await readFile(file, 'utf8');
@@ -1238,7 +1237,7 @@ async function handEdit(from: string, to: string) {
   await writeFile(file, raw.replace(from, to));
 }
 
-// A schedule changed in config.toml outside frost updates the job before the next command runs, with a line
+// A schedule changed in config.toml outside Frost updates the job before the next command runs, with a line
 // saying so. Commands that find nothing changed say nothing, and `config get` stays bare for scripts.
 test('commands bring the scheduled job in line with hand edits to config.toml', async t => {
   const f = await fixture(t);
@@ -1248,7 +1247,7 @@ test('commands bring the scheduled job in line with hand edits to config.toml', 
   await handEdit('every = "6h"', 'every = "daily"');
   assert.equal((await f.must(['config', 'get', 'schedule.every'])).trim(), 'daily');
   assert.equal(f.schedule.length, 1);
-  assert.match(await f.must(['status']), /^\nconfig\.toml changed\. Scheduled job updated: daily\.\n\n┌ {2}frost/);
+  assert.match(await f.must(['status']), /^\nconfig\.toml changed\. Scheduled job updated: daily\.\n\n┌ {2}Frost/);
   assert.equal(f.schedule.length, 2);
   assert.equal(f.schedule[1].schedule.every, 'daily');
   assert.ok(!(await f.must(['status'])).includes('config.toml changed'));
@@ -1336,7 +1335,7 @@ test("status shows the next run time the schedule hasn't covered", async t => {
   assert.equal(await next(), '~in 5h');
 });
 
-// A storage location changed in config.toml outside frost gets the checks `config edit` would show, the
+// A storage location changed in config.toml outside Frost gets the checks `config edit` would show, the
 // first time a command uses it. Problems that stop it opening are left to the command's own error.
 test('a hand-edited storage location is checked the first time it is used', async t => {
   const f = await fixture(t);
@@ -1506,7 +1505,7 @@ test('the background process applies the change once the backup finishes', async
   assert.equal((await f.invoke(['config', '--after-backup'])).code, 0);
   assert.equal(f.schedule.length, 2);
 
-  // frost was uninstalled while the backup ran: the job goes, and the cache stays empty.
+  // Frost was uninstalled while the backup ran: the job goes, and the cache stays empty.
   await rm(f.conf, { recursive: true, force: true });
   await rm(f.cache, { recursive: true, force: true });
   assert.equal((await f.invoke(['config', '--after-backup'])).code, 0);
@@ -1532,7 +1531,7 @@ test('a scheduled backup that died is not named as running', async t => {
   }
 });
 
-test('the background process runs frost again with the internal flag', () => {
+test('the background process runs Frost again with the internal flag', () => {
   const [command, args] = syncLaterCommand();
   assert.equal(command, process.execPath);
   assert.deepEqual(args.slice(1), ['config', '--after-backup']);

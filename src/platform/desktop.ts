@@ -45,7 +45,7 @@ export function revealCommand(file: string, platform = process.platform): [strin
 }
 
 // With an injected runner, waits for it and checks the exit code. Otherwise starts the program
-// detached so it outlives frost, and resolves once it has spawned.
+// detached so it outlives Frost, and resolves once it has spawned.
 async function start(command: [string, string[]], options: DesktopOptions, verbatim = false): Promise<void> {
   if (options.runner) {
     const r = await options.runner(...command);

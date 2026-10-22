@@ -713,8 +713,8 @@ test('setup groups S3 services in a second list and picks choices by number', as
   assert.equal(m.step, 'storage');
 });
 
-test('setup adds frost SSH key to a self-hosted server for you or by hand', async () => {
-  // A server that refuses frost's key until it's added, or until a connection trusts a new host key after the key
+test('setup adds Frost SSH key to a self-hosted server for you or by hand', async () => {
+  // A server that refuses Frost's key until it's added, or until a connection trusts a new host key after the key
   // was added by hand.
   const server = () => {
     const tried: { host: string; port: number; path: string; accept?: boolean }[] = [];
@@ -723,7 +723,7 @@ test('setup adds frost SSH key to a self-hosted server for you or by hand', asyn
       connect: async (s, _signal, options) => {
         tried.push({ ...s.sftp, accept: options?.acceptNewHostKey });
         if (!state.added && !options?.acceptNewHostKey)
-          throw new ConnectError('login', s.sftp.host + " didn't accept frost's SSH key.");
+          throw new ConnectError('login', s.sftp.host + " didn't accept Frost's SSH key.");
         return RepoState.New;
       },
       addKey: async () => {
@@ -762,7 +762,7 @@ test('setup adds frost SSH key to a self-hosted server for you or by hand', asyn
   assert.deepEqual(byHand.tried[0], { host: 'me@nas.local', port: 2222, path: 'frost', accept: undefined });
   assert.equal(m.step, 'keyChoice');
   assert.equal(m.err, '');
-  assert.match(strip(m.view()), /Add frost's SSH key to me@nas.local\./);
+  assert.match(strip(m.view()), /Add Frost's SSH key to me@nas.local\./);
 
   // By hand: the key file is shown and can be revealed, and the next connection trusts a new host key.
   await m.onKey('down');
@@ -825,7 +825,7 @@ test('setup adds frost SSH key to a self-hosted server for you or by hand', asyn
   const stuck = new SetupModel(
     setupDeps({
       connect: async () => {
-        throw new ConnectError('login', "me@nas.local didn't accept frost's SSH key.");
+        throw new ConnectError('login', "me@nas.local didn't accept Frost's SSH key.");
       },
       addKey: async () => {
         throw new Error('ssh stopped with code 255');
@@ -841,7 +841,7 @@ test('setup adds frost SSH key to a self-hosted server for you or by hand', asyn
   await stuck.onKey('enter');
   await stuck.onKey('enter');
   assert.equal(stuck.step, 'keyManual');
-  assert.equal(stuck.err, "me@nas.local didn't accept frost's SSH key.");
+  assert.equal(stuck.err, "me@nas.local didn't accept Frost's SSH key.");
 });
 
 test('setup asks local drive storage for a full path', async () => {

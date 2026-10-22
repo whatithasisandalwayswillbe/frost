@@ -90,7 +90,7 @@ export class RestoreState {
   besideErr?: Error;
   overErr?: Error;
 
-  // For dest 1, picked is the folder the user chose and chosen is the new folder frost will make inside it.
+  // For dest 1, picked is the folder the user chose and chosen is the new folder Frost will make inside it.
   // The tops are the top-level entries the restore creates, for the preview. The restore writes into
   // folder, which stays empty when overwriting.
   picked = '';

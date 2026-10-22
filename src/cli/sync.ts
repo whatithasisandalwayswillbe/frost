@@ -1,6 +1,6 @@
 // Keeps the scheduled job in line with config.toml, whether a command changed it or a text editor did.
 // Replacing a job never stops a scheduled backup it's running: the change waits for the backup to finish.
-// A change made outside frost is applied before the next command runs, and a new storage location gets the
+// A change made outside Frost is applied before the next command runs, and a new storage location gets the
 // same checks `frost config edit` gives it. Those commands print a line for each thing done, before their
 // own output. The other settings need nothing here, because every command reads them when it runs.
 
@@ -52,7 +52,7 @@ export function jobNote(cfg: config.Config, applied = true): string {
     : 'The scheduled job will be removed after the active backup process completes.';
 }
 
-// Updates the job when config.toml asks for a different one than frost installed. Returns the line to print,
+// Updates the job when config.toml asks for a different one than Frost installed. Returns the line to print,
 // or '' when they already match. Without a recorded job there's nothing to compare with, so the job is left
 // alone. A change already waiting for the running scheduled backup was reported when it began to wait.
 export async function reconcileJob(ctx: Context, cfg: config.Config, force = false): Promise<string> {
@@ -83,7 +83,7 @@ export async function reconcileJob(ctx: Context, cfg: config.Config, force = fal
 
 // The background process `syncJob` starts while a scheduled backup runs, as `frost config --after-backup`.
 // It checks every 15 seconds until no scheduled backup is running, then brings the job in line with
-// config.toml as it is by then. A config.toml that's gone means frost was uninstalled, so it removes the
+// config.toml as it is by then. A config.toml that's gone means Frost was uninstalled, so it removes the
 // job, which could only fail without settings, and writes nothing to the cache. It prints nothing.
 export async function syncAfterBackup(ctx: Context): Promise<void> {
   for (;;) {
@@ -135,7 +135,7 @@ export async function reconcileFromRun(ctx: Context): Promise<string> {
   return reconcileJob(ctx, cfg, true);
 }
 
-// Checks a storage location that config.toml changed to outside frost, the first time a command uses it,
+// Checks a storage location that config.toml changed to outside Frost, the first time a command uses it,
 // and returns a line for each problem. Problems that stop the storage opening are left to the command,
 // whose error explains them.
 export async function storageNotes(ctx: Context): Promise<string[]> {
@@ -163,7 +163,7 @@ export async function storageNotes(ctx: Context): Promise<string[]> {
   return lines;
 }
 
-// Applies changes made outside frost before a command runs, and prints what it did. A config.toml that
+// Applies changes made outside Frost before a command runs, and prints what it did. A config.toml that
 // can't be read is left for the command to report. `storage` says whether the command uses the backups.
 export async function applyConfigEdits(ctx: Context, storage: boolean): Promise<void> {
   let cfg: config.Config;

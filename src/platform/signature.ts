@@ -5,7 +5,7 @@ import { createHash, createPublicKey, verify, timingSafeEqual } from 'node:crypt
 // Same key as install/release-signing.pub and the installer's RELEASE_KEY. The release script
 // rewrites this exact line, so keep it on one line.
 export const releaseKey = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHO/g64dTbRW3poi7pdiPKgljYdHXG+TZeZQg4cfzAsV';
-const errBadSignature = new Error("checksums.txt isn't signed by the frost release key");
+const errBadSignature = new Error("checksums.txt isn't signed by the Frost release key");
 
 // Reads SSH wire format: big-endian uint32s and uint32-length-prefixed strings. Any overrun
 // fails as a bad signature.

@@ -118,7 +118,7 @@ const nativeMemory = new Set<Buffer[]>();
 const asNumber = (value: number | bigint): number => Number(value);
 
 // Builds an error from a Win32 error code, with the system's message and the errno name the
-// rest of frost checks for. Codes without a mapping become EIO.
+// rest of Frost checks for. Codes without a mapping become EIO.
 function error(value: number): Error & { code: string; errno: number } {
   const code: Record<number, string> = {
     2: 'ENOENT',

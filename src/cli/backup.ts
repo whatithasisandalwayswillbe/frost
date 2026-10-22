@@ -100,7 +100,7 @@ export function accessHint(scheduled: boolean, runtime = process.execPath, env =
   const app = terminalApps[env.TERM_PROGRAM ?? ''];
   return (
     open +
-    (app ? 'allow ' + app + ' (the application running frost)' : 'allow the terminal application running frost') +
+    (app ? 'allow ' + app + ' (the application running Frost)' : 'allow the terminal application running Frost') +
     '. Scheduled backups also require ' +
     runtime +
     ' on this list.'
@@ -252,7 +252,7 @@ export async function openScheduledLog(p: string) {
 }
 
 // Scheduled runs often start as the computer wakes, before its network is back, so they try storage again
-// for about 5 minutes. They also wait up to an hour for another frost process to finish with the backups,
+// for about 5 minutes. They also wait up to an hour for another Frost process to finish with the backups,
 // such as a backup started by hand.
 const offlineWaits = [10, 20, 40, 80, 150].map(s => s * 1000);
 const scheduledLockWait = 3600e3;
@@ -361,7 +361,7 @@ export async function runBackup(ctx: Context, flags: BackupFlags): Promise<void>
   let error: unknown;
   try {
     if (flags.scheduled) {
-      // On Windows, or with --log-file, frost writes the log itself and copies everything it prints there
+      // On Windows, or with --log-file, Frost writes the log itself and copies everything it prints there
       // without styling. Elsewhere the scheduler collects the output, so this only trims an oversized log.
       if (flags.logFile || process.platform === 'win32') {
         try {

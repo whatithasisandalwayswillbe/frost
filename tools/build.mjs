@@ -1,4 +1,4 @@
-// Builds frost into dist/: deletes the old output, compiles with tsc, then copies assets/.
+// Builds Frost into dist/: deletes the old output, compiles with tsc, then copies assets/.
 // `npm run build` runs it. tools.test.ts imports cleanBuild.
 import { cp, lstat, realpath, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';

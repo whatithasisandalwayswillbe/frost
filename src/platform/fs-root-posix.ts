@@ -530,7 +530,7 @@ class PosixDirectory extends PosixFile implements RootDirectory {
   }
 }
 
-// This is the only path-based open, of an absolute folder relative to AT_FDCWD. frost only
+// This is the only path-based open, of an absolute folder relative to AT_FDCWD. Frost only
 // passes volume roots here and walks down from them.
 export const posixBackend: RootBackend = {
   openRoot(name: string): RootDirectory {

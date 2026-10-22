@@ -11,5 +11,5 @@
   "configured": false,
   "code": 1,
   "stdout": "",
-  "stderr": "\nerror: frost isn't set up yet, run `frost init`\n\n"
+  "stderr": "\nerror: Frost isn't set up yet, run `frost init`\n\n"
 }

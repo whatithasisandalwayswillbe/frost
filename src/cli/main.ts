@@ -1,4 +1,4 @@
-// Process entry point. Runs one frost command and turns ctrl+c into a cancelled context.
+// Process entry point. Runs one Frost command and turns ctrl+c into a cancelled context.
 
 import { execute } from './index.js';
 import { cleanup } from '../platform/update.js';

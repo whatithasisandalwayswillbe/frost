@@ -1,6 +1,6 @@
 // The local manifest, a checksummed JSONL journal in the cache folder. It remembers uploaded
 // chunk IDs, per-file chunk lists, snapshot headers and backup state, and holds a persistent
-// OS lock so only one frost process uses it at a time.
+// OS lock so only one Frost process uses it at a time.
 
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -9,7 +9,7 @@ import { parseID } from './crypto.js';
 import type { Snapshot } from './snapshot.js';
 import { openRoot, readAll, type RootDirectory, type RootFile } from '../platform/fs-root.js';
 
-export const errLocked = new Error('another frost process is running against this repository');
+export const errLocked = new Error('another Frost process is running against this repository');
 
 // Every replay failure gives the same advice: the manifest is only a cache.
 const corrupt = 'manifest cache is corrupted; delete it to force rebuilding state from storage';

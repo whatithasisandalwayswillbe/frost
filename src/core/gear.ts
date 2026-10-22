@@ -1,7 +1,7 @@
 // The chunker's gear-hash scan as a tiny WebAssembly function. JavaScript has no fast 64-bit
 // integers, and this loop runs several times faster than the best JavaScript version. The
 // module is assembled from the instructions below the first time it's needed; no compiled file
-// ships, and V8 runs it in the same sandbox as the rest of frost.
+// ships, and V8 runs it in the same sandbox as the rest of Frost.
 
 import type { Table } from './chunker.js';
 

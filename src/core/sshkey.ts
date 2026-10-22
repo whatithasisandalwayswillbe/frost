@@ -1,5 +1,5 @@
-// frost's own SSH key for self-hosted storage. Scheduled backups can't use an SSH agent or type a
-// passphrase, so frost logs in with a key of its own: ed25519, unencrypted, readable only by you, written
+// Frost's own SSH key for self-hosted storage. Scheduled backups can't use an SSH agent or type a
+// passphrase, so Frost logs in with a key of its own: ed25519, unencrypted, readable only by you, written
 // in the OpenSSH format every ssh client reads. The private half is never printed.
 
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
@@ -102,7 +102,7 @@ export function decodePrivate(text: string): { publicKey: Buffer; comment: strin
   }
 }
 
-// Returns frost's public key line, making the key pair first if there isn't one. The .pub file is only a
+// Returns Frost's public key line, making the key pair first if there isn't one. The .pub file is only a
 // copy, so a missing or damaged one is written again from the private key. On Windows the key's folder is
 // made owner-only before anything is written, and again for a key that's already there.
 export async function ensureKey(file = config.sshKeyPath(), runner?: Runner): Promise<string> {
@@ -120,7 +120,7 @@ export async function ensureKey(file = config.sshKeyPath(), runner?: Runner): Pr
     try {
       decoded = decodePrivate(existing);
     } catch (error) {
-      throw new Error(`can't use frost's SSH key at ${file}: ${(error as Error).message}`);
+      throw new Error(`can't use Frost's SSH key at ${file}: ${(error as Error).message}`);
     }
     const line = publicLine(decoded.publicKey, decoded.comment);
     const saved = await readFile(file + '.pub', 'utf8').catch(() => '');
@@ -149,7 +149,7 @@ export const installScript =
   "sh -c 'umask 077; mkdir -p .ssh && touch .ssh/authorized_keys && read -r k && " +
   '{ grep -qxF "$k" .ssh/authorized_keys || printf "%s\\n" "$k" >> .ssh/authorized_keys; }\'';
 
-// The ssh command line that adds frost's key, run in the terminal so ssh can ask for the password and show
+// The ssh command line that adds Frost's key, run in the terminal so ssh can ask for the password and show
 // the host key on first contact. Keys you already use may log in instead of the password.
 export function installArgs(host: string, port: number): string[] {
   return ['-T', '-o', 'LogLevel=ERROR', ...(port ? ['-p', String(port)] : []), '--', host, installScript];

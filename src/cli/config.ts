@@ -1,6 +1,6 @@
 // `frost config` lists the settings, reads or changes one, or opens config.toml in an editor. A change to
 // the schedule reinstalls the scheduled job, and a change of storage is checked before it's saved. Changes
-// made to config.toml outside frost are applied before these commands run, by sync.ts.
+// made to config.toml outside Frost are applied before these commands run, by sync.ts.
 
 import { readFile, mkdtemp, mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';

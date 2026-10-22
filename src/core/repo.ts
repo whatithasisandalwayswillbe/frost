@@ -10,7 +10,7 @@ import { errNotFound, type Backend } from './storage.js';
 
 // The repository layout version. A format change needs a bump here and a migration.
 const layoutVersion = 2;
-export const errNotInitialized = new Error('no frost repository here yet');
+export const errNotInitialized = new Error('no Frost repository here yet');
 export const errWrongKey = new Error("this key doesn't match the repository");
 // Same text as the mismatch error from Key, which putChunk maps back to this object.
 const errCorrupt = new Error("chunk content doesn't match its ID");
@@ -139,7 +139,7 @@ export class Repo {
   static async init(backend: Backend, key: Key, signal?: AbortSignal): Promise<Repo> {
     if (await Repo.exists(backend, signal))
       throw new Error(
-        `${backend} already contains a frost repository (run \`frost key import\` with its recovery phrase to decrypt it)`,
+        `${backend} already contains a Frost repository (run \`frost key import\` with its recovery phrase to decrypt it)`,
       );
     const keys = await backend.list('', signal);
     if (keys.some(value => /^(chunks|snapshots|trees)\//.test(value)))
@@ -171,7 +171,7 @@ export class Repo {
     }
     const info = JSON.parse(data.toString()) as Info;
     if (info.version !== layoutVersion)
-      throw new Error(`repository format v${info.version} isn't supported by this frost (wants v${layoutVersion})`);
+      throw new Error(`repository format v${info.version} isn't supported by this Frost (wants v${layoutVersion})`);
     if (typeof info.id !== 'string' || !/^[a-fA-F0-9]{16}$/.test(info.id)) throw new Error('invalid repository ID');
     return new Repo(backend, key, info);
   }
@@ -217,7 +217,7 @@ export class Repo {
     return blob.length;
   }
 
-  // Downloads, opens and verifies a chunk. With getOwned, the downloaded buffer belongs to frost
+  // Downloads, opens and verifies a chunk. With getOwned, the downloaded buffer belongs to Frost
   // and may be detached while it's opened.
   async getChunk(id: string, signal?: AbortSignal): Promise<Buffer> {
     id = parseID(id);
@@ -243,7 +243,7 @@ export class Repo {
         const id = parseID(object.slice(object.lastIndexOf('/') + 1));
         if (chunkKey(id) === object) result.push(id);
       } catch {
-        /* Ignore objects outside frost's chunk layout. */
+        /* Ignore objects outside Frost's chunk layout. */
       }
     }
     return result;
@@ -323,7 +323,7 @@ export class Repo {
   }
 
   // Loads a file list through its tree index. The recorded length is checked as chunks arrive,
-  // so a bad index can't make frost hold more than the recorded size.
+  // so a bad index can't make Frost hold more than the recorded size.
   async loadTree(id: string, signal?: AbortSignal): Promise<Tree> {
     if (!validID(id)) throw new Error(`invalid snapshot id ${JSON.stringify(id)}`);
     const index = await this.getJSON<TreeIndex>('trees/' + id, signal);

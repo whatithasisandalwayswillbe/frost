@@ -1,6 +1,6 @@
 # CLI reference
 
-frost has eight commands. Every one takes `--config-dir <dir>` to use a different config directory, and `-h` (`--help`) to show frost's help, which lists every command and flag. `frost --version` prints the version.
+Frost has eight commands. Every one takes `--config-dir <dir>` to use a different config directory, and `-h` (`--help`) to show Frost's help, which lists every command and flag. `frost --version` prints the version.
 
 ## Installation
 
@@ -44,7 +44,7 @@ npm install -g getfrost
 pnpm add -g getfrost
 ```
 
-The `getfrost` package needs Node.js 22 or newer, and has no dependencies or install scripts. Its `frost` command installs frost the first time it runs. It downloads the release matching the package's version, checks its signature and checksum with frost's own updater code, and runs the release's installer into the application folder above. Every later command runs the installed frost, which updates itself as usual, and an older `getfrost` never replaces a newer frost.
+The `getfrost` package needs Node.js 22 or newer, and has no dependencies or install scripts. Its `frost` command installs Frost the first time it runs. It downloads the release matching the package's version, checks its signature and checksum with Frost's own updater code, and runs the release's installer into the application folder above. Every later command runs the installed Frost, which updates itself as usual, and an older `getfrost` never replaces a newer Frost.
 
 The installer's launchers go in `frost/bin` beside the application folder, but the package's `frost` is the one on your `PATH`. Removing the package leaves the application folder in place.
 
@@ -81,7 +81,7 @@ In a terminal, `frost init` opens a full-screen setup that asks one thing at a t
 
 Setup connects right after the storage step and checks it can read, list, write and delete a test object, including [conditional writes](#storage-compatibility). If that fails, it goes back to the answer that caused it and keeps the rest. If the key on this machine doesn't open the backups already in that storage, it asks for their recovery phrase. If this machine's backups are somewhere else and the new storage is empty, it asks before starting a separate set of backups there.
 
-Picking Permafrost asks whether you have an access key. If you don't, frost opens [getfro.st/perma](https://getfro.st/perma) in your browser, and you paste the key it gives you. With a custom Permafrost server, setup only asks for the key.
+Picking Permafrost asks whether you have an access key. If you don't, Frost opens [getfro.st/perma](https://getfro.st/perma) in your browser, and you paste the key it gives you. With a custom Permafrost server, setup only asks for the key.
 
 Picking Self-hosted or Local drive works as [Self-hosted storage](#self-hosted-storage) and [Local drive storage](#local-drive-storage) describe.
 
@@ -89,17 +89,17 @@ Saving writes `config.toml` and the key file and installs the scheduled job. Run
 
 The full-screen setup doesn't ask for a Permafrost server or a folder inside an S3 bucket, and keeps whatever's already set. Use `frost config edit` for a new server or prefix, accept its warning, save and run `frost init` again. `frost config set` requires an existing repository at the new location. For a fresh custom-server setup, prepare `config.toml` as described in the [Permafrost help](https://getfro.st/help/storage/permafrost).
 
-With piped input, `init` asks plain questions, one per line. It offers one generic S3 choice instead of the S3 list and asks for the folder inside the bucket. Getting a Permafrost key works there too, and so does adding frost's SSH key to a server.
+With piped input, `init` asks plain questions, one per line. It offers one generic S3 choice instead of the S3 list and asks for the folder inside the bucket. Getting a Permafrost key works there too, and so does adding Frost's SSH key to a server.
 
 If Permafrost rejects your access key or refuses an upload, commands that access your backups stop with an error that gives Permafrost's reason. Run `frost init` again to set up a working key.
 
 ### Self-hosted storage
 
-Self-hosted storage is a folder on a server you reach over SSH: a Linux machine, a NAS, a VPS, or a Mac or Windows computer with its SSH server on. frost runs the system's OpenSSH client and speaks SFTP over it, so the server needs nothing else installed.
+Self-hosted storage is a folder on a server you reach over SSH: a Linux machine, a NAS, a VPS, or a Mac or Windows computer with its SSH server on. Frost runs the system's OpenSSH client and speaks SFTP over it, so the server needs nothing else installed.
 
 Setup asks for the server's SSH address, like `me@nas.local` (add `:2222` for another port, or use a `Host` from your SSH config), and a folder on it. A relative folder starts in your home folder there, and setup creates the folder's last part if it's missing.
 
-frost supplies its own SSH key, `ssh/frost_ed25519` in the config folder, which setup makes the first time. It never uses your SSH agent or asks for a password, so scheduled backups log in the same way. Explicit `IdentityFile` entries in your SSH config may also be offered. If the server doesn't accept a key yet, setup offers two ways to add frost's key:
+Frost supplies its own SSH key, `ssh/frost_ed25519` in the config folder, which setup makes the first time. It never uses your SSH agent or asks for a password, so scheduled backups log in the same way. Explicit `IdentityFile` entries in your SSH config may also be offered. If the server doesn't accept a key yet, setup offers two ways to add Frost's key:
 
 | Choice | What happens |
 |---|---|
@@ -112,11 +112,11 @@ A server whose host key changes is refused until you remove the old key with `ss
 
 Local drive storage is a folder on an internal or external drive. Setup asks for a full path, like `/Volumes/Backup/frost` or `E:\frost`, on a drive that's connected, and creates the path's last folder if it's missing. Nothing after setup creates it, so an unplugged drive can't turn into backups on whatever disk is mounted in its place. A missing folder fails with an error that says to connect the drive, after a scheduled run [tries again for a while](#missed-runs).
 
-frost reads and writes the folder through the same handle-based filesystem calls as restore. It refuses links and junctions inside the folder, and follows links on the way to it only by the rules [overwriting](#overwriting) uses. For a NAS, Self-hosted storage is usually the better choice. A mounted network share works only where its filesystem passes setup's check, and on Windows, use a `\\server\share` path, since mapped drive letters belong to one sign-in.
+Frost reads and writes the folder through the same handle-based filesystem calls as restore. It refuses links and junctions inside the folder, and follows links on the way to it only by the rules [overwriting](#overwriting) uses. For a NAS, Self-hosted storage is usually the better choice. A mounted network share works only where its filesystem passes setup's check, and on Windows, use a `\\server\share` path, since mapped drive letters belong to one sign-in.
 
 ### Storage compatibility
 
-frost needs storage that creates an object only when its name is free, atomically, so machines can't overwrite each other's backup metadata. Setup checks that a second create fails without changing the original object, and frost checks a new location again before `frost config set` accepts it.
+Frost needs storage that creates an object only when its name is free, atomically, so machines can't overwrite each other's backup metadata. Setup checks that a second create fails without changing the original object, and Frost checks a new location again before `frost config set` accepts it.
 
 | Storage | How objects are created safely |
 |---|---|
@@ -153,7 +153,7 @@ A change is a file or folder added or removed, or a file whose contents, size, p
 | `--exclude <pattern>` | Also skip this pattern for this run. Repeatable |
 | `--no-verify` | Skip the spot check after the backup |
 
-After a backup that saves a snapshot, frost downloads `verify.sample` random chunks and checks them. When nothing changed, it only checks if the last check is more than a day old or found a problem, and shows the last result otherwise. If any check fails, `backup` exits with `1`.
+After a backup that saves a snapshot, Frost downloads `verify.sample` random chunks and checks them. When nothing changed, it only checks if the last check is more than a day old or found a problem, and shows the last result otherwise. If any check fails, `backup` exits with `1`.
 
 With Permafrost, a self-hosted server or a local drive, `backup` ends with a `storage` warning when the storage has something to say, such as an account or disk that's nearly full.
 
@@ -163,24 +163,24 @@ Only one backup or restore uses your backups at a time. If another is running, `
 
 ### What's backed up
 
-frost backs up regular files, folders and symlinks, with their permissions and modification times. A symlink is stored as the link itself, and hard-linked files are backed up and restored as separate files. frost skips sockets, devices, pipes and the `.frost-partial-...` files a stopped restore leaves behind, and it doesn't keep owners, ACLs or extended attributes.
+Frost backs up regular files, folders and symlinks, with their permissions and modification times. A symlink is stored as the link itself, and hard-linked files are backed up and restored as separate files. Frost skips sockets, devices, pipes and the `.frost-partial-...` files a stopped restore leaves behind, and it doesn't keep owners, ACLs or extended attributes.
 
 ### When something goes wrong
 
-| What happens | What frost does |
+| What happens | What Frost does |
 |---|---|
 | A file or folder inside a backed-up folder can't be read (permissions, deleted mid-run, kept only in iCloud on macOS) | Skips it and lists it. The snapshot is still saved, and `status` shows how many were skipped |
 | A configured folder isn't there (an unplugged drive, a moved folder) | Skips it and backs up the rest. `backup` and `status` name it |
 | None of the configured folders are there, or one exists but can't be read | Fails the whole backup, so it doesn't look fine while saving nothing |
 | A file changes while it's read (a database in use, a running VM's disk, a download) | Reads it again at the end of the backup. If it's still changing, the snapshot keeps its previous copy, and `backup` and `status` list it. A file that was never backed up cleanly is skipped |
 
-frost doesn't take filesystem or database snapshots. Back up a file that's always busy while it's closed or stopped.
+Frost doesn't take filesystem or database snapshots. Back up a file that's always busy while it's closed or stopped.
 
-Backups don't list every object in storage. frost trusts its local record of what's uploaded and checks it against storage once a week, after a check finds something missing, or when the storage isn't where it was last checked.
+Backups don't list every object in storage. Frost trusts its local record of what's uploaded and checks it against storage once a week, after a check finds something missing, or when the storage isn't where it was last checked.
 
-On macOS, frost doesn't download files that iCloud keeps only online. They're skipped and listed like other files that can't be read.
+On macOS, Frost doesn't download files that iCloud keeps only online. They're skipped and listed like other files that can't be read.
 
-macOS also protects some folders. A backup you run in a terminal gets access through the terminal app (Terminal, iTerm and so on). Scheduled backups run the bundled runtime, `~/Library/Application Support/frost/app/runtime/bin/node`. macOS asks about it the first time it reads `~/Desktop`, `~/Documents` or `~/Downloads`, and refuses it access to other protected folders like `~/Library/Mail` and `~/Library/Safari` without asking. To cover them all, add the runtime under System Settings > Privacy & Security > Full Disk Access. The permission carries over when frost updates.
+macOS also protects some folders. A backup you run in a terminal gets access through the terminal app (Terminal, iTerm and so on). Scheduled backups run the bundled runtime, `~/Library/Application Support/frost/app/runtime/bin/node`. macOS asks about it the first time it reads `~/Desktop`, `~/Documents` or `~/Downloads`, and refuses it access to other protected folders like `~/Library/Mail` and `~/Library/Safari` without asking. To cover them all, add the runtime under System Settings > Privacy & Security > Full Disk Access. The permission carries over when Frost updates.
 
 ## `frost restore [snapshot] [paths...]`
 
@@ -188,7 +188,7 @@ Restores files from a snapshot. With no arguments in a terminal, it opens the [s
 
 ### Picking a snapshot
 
-frost shows a snapshot's ID as two words and 4 more characters, like `maple-absurd-3f1c`. When two IDs would look the same, it shows more characters for both. If an ID you type matches more than one snapshot, frost asks for more of it. The full ID has 11 characters after the words. It names the snapshot's objects in storage, and the command that [carries on a restore](#interrupted-restores) uses it.
+Frost shows a snapshot's ID as two words and 4 more characters, like `maple-absurd-3f1c`. When two IDs would look the same, it shows more characters for both. If an ID you type matches more than one snapshot, Frost asks for more of it. The full ID has 11 characters after the words. It names the snapshot's objects in storage, and the command that [carries on a restore](#interrupted-restores) uses it.
 
 | You type | You get |
 |---|---|
@@ -222,19 +222,19 @@ In a new folder, what you restore keeps its own name, relative to the folder the
 
 Without paths, the selection is the snapshot's backed-up folders. `--beside` doesn't work when the selection only shares the top of a drive, when that folder isn't on this computer (a snapshot from another machine), or when you can't write to it. Backing up your whole home folder, for example, would put the new folder in `/Users` or `/home`. Use `--to` in those cases.
 
-A new folder never overwrites anything. Its name always uses the ID with 4 characters, and if that name is taken, frost adds `-1`, `-2` and so on.
+A new folder never overwrites anything. Its name always uses the ID with 4 characters, and if that name is taken, Frost adds `-1`, `-2` and so on.
 
 Every chunk is decrypted and checked against its ID before it's written, and chunks download in parallel. Each file is written to a hidden `.frost-partial-...` file and renamed into place when it's complete, so a failed restore never leaves a half-written file where a real one was.
 
 ### Overwriting
 
-`--overwrite` needs a snapshot from a computer with the same kind of paths (macOS and Linux, or Windows). It follows links above a file only when the link and its parent belong to you or to root, and the parent is protected from writes by other users. Owned sticky folders can protect owned entries. A link in an untrusted folder is refused, and on Windows any link or junction there is refused. frost checks this before asking, and the browser greys out "Overwrite original files" and says why.
+`--overwrite` needs a snapshot from a computer with the same kind of paths (macOS and Linux, or Windows). It follows links above a file only when the link and its parent belong to you or to root, and the parent is protected from writes by other users. Owned sticky folders can protect owned entries. A link in an untrusted folder is refused, and on Windows any link or junction there is refused. Frost checks this before asking, and the browser greys out "Overwrite original files" and says why.
 
 Originals that already match the snapshot are checked and skipped, so they aren't downloaded. Overwriting needs room for the new copy of a file next to the old one until it's renamed into place.
 
 ### Interrupted restores
 
-If a restore stops (a lost connection, Ctrl+C, the machine sleeping), frost prints the command that carries on. It's the same restore with the snapshot's full ID in place of `latest` or a time, so a backup in between doesn't change which snapshot it means.
+If a restore stops (a lost connection, Ctrl+C, the machine sleeping), Frost prints the command that carries on. It's the same restore with the snapshot's full ID in place of `latest` or a time, so a backup in between doesn't change which snapshot it means.
 
 On Windows, paths with shell expansion characters get a PowerShell command; the message says when to use PowerShell.
 
@@ -273,26 +273,26 @@ After a successful restore, the browser shows the result in Finder, Explorer or 
 
 ## `frost update`
 
-Installs the latest frost release in the application folder.
+Installs the latest Frost release in the application folder.
 
 | Flag | Does |
 |---|---|
 | `--check` | Only say whether there's a newer release |
 
-frost checks the release's signed checksums, downloads the package for your platform and checks its SHA-256. It stages the scripts and bundled runtime, tests their versions, then activates the new scripts. The runtime keeps its fixed path, and identical runtime bytes aren't replaced. Config, keys and backups stay in their own folders. [SECURITY.md](SECURITY.md#updates) describes the checks and interruption limits.
+Frost checks the release's signed checksums, downloads the package for your platform and checks its SHA-256. It stages the scripts and bundled runtime, tests their versions, then activates the new scripts. The runtime keeps its fixed path, and identical runtime bytes aren't replaced. Config, keys and backups stay in their own folders. [SECURITY.md](SECURITY.md#updates) describes the checks and interruption limits.
 
-It never installs a pre-release, or anything older than what you're running. frost installed with npm or pnpm updates itself this way too.
+It never installs a pre-release, or anything older than what you're running. Frost installed with npm or pnpm updates itself this way too.
 
 It can't update in these cases:
 
 | When | Do instead |
 |---|---|
-| frost was built from source | Rebuild it with `npm run build`, or use the installer |
+| Frost was built from source | Rebuild it with `npm run build`, or use the installer |
 | You can't write to its application folder | Reinstall with the installer as your own user |
 
 ### Automatic updates
 
-After a scheduled backup, frost checks for a new release at most once every 20 hours and installs it the same way. The check runs whether or not the backup worked, and a failed check or install never fails the backup. The result shows in `frost status` and the browser's settings, and in the [scheduled run log](#files) where there is one.
+After a scheduled backup, Frost checks for a new release at most once every 20 hours and installs it the same way. The check runs whether or not the backup worked, and a failed check or install never fails the backup. The result shows in `frost status` and the browser's settings, and in the [scheduled run log](#files) where there is one.
 
 With `update.auto` set to `false`, the check still runs and `frost status` says when a release is out, but nothing is installed until you run `frost update`. Without scheduled backups there's no background check at all.
 
@@ -303,17 +303,17 @@ With `update.auto` set to `false`, the check still runs and `frost status` says 
 | `frost config` | Print every setting. Credentials are masked unless you add `--show-secrets` |
 | `frost config get <key>` | Print one setting. Lists print one item per line, and secrets need `--show-secrets` |
 | `frost config set <key> <value...>` | Change one setting and show what changed. Lists take one value per item |
-| `frost config edit [editor]` | Open a copy of `config.toml` in the editor you name, `$VISUAL` or `$EDITOR`, or nano, vim or vi (Notepad on Windows). When you close it, frost lists what changed and saves the copy once you type `yes`. A file that doesn't parse goes back to the editor |
+| `frost config edit [editor]` | Open a copy of `config.toml` in the editor you name, `$VISUAL` or `$EDITOR`, or nano, vim or vi (Notepad on Windows). When you close it, Frost lists what changed and saves the copy once you type `yes`. A file that doesn't parse goes back to the editor |
 
 Changing a `schedule` setting with `set` or `edit` updates the OS scheduled job straight away.
 
-On macOS and Windows, replacing the job while a scheduled backup is running would stop that backup, so the change waits. `set`, `edit` and `frost init` save it, say the job updates once the running backup finishes, and start a background frost process that applies it as soon as the backup is done, however long that takes. Later changes share the same process, which checks every 15 seconds and prints nothing. If `config.toml` is gone by then because frost was uninstalled, it removes the job. A systemd timer or crontab line can be replaced during a backup, so on Linux nothing waits.
+On macOS and Windows, replacing the job while a scheduled backup is running would stop that backup, so the change waits. `set`, `edit` and `frost init` save it, say the job updates once the running backup finishes, and start a background Frost process that applies it as soon as the backup is done, however long that takes. Later changes share the same process, which checks every 15 seconds and prints nothing. If `config.toml` is gone by then because Frost was uninstalled, it removes the job. A systemd timer or crontab line can be replaced during a backup, so on Linux nothing waits.
 
 ### Editing `config.toml` directly
 
-You can also change `config.toml` in any editor. Every command reads its settings from the file when it runs, so most changes take effect on the next run. Two settings need more than that, and frost handles them the next time any command except `init` and `config get` runs:
+You can also change `config.toml` in any editor. Every command reads its settings from the file when it runs, so most changes take effect on the next run. Two settings need more than that, and Frost handles them the next time any command except `init` and `config get` runs:
 
-| You change | What frost does |
+| You change | What Frost does |
 |---|---|
 | A `schedule` setting | Updates or removes the scheduled job to match, and prints `config.toml changed. Scheduled job updated: daily.` or `Scheduled job removed.`. If the new value is wrong or the scheduler refuses, it says so on every command until it's fixed. A change made while a scheduled backup runs waits for it, as `set` does |
 | Where backups go | Runs the checks `frost config edit` would, the first time a command uses the new location, and prints any problem as a warning. A location that doesn't open fails with the usual explanation |
@@ -352,11 +352,11 @@ On Linux, a scheduled run updates its job too. A launchd or Task Scheduler job c
 
 | You want to | Do this |
 |---|---|
-| Move them to another folder, drive, server or bucket | Move the whole folder (`frost.repo`, `chunks/`, `snapshots/` and `trees/`), then point frost at it with `frost config set`, or with `frost init` for another kind of storage. Nothing uploads again |
-| Start a separate set of backups somewhere else | Run `frost init` and point it at the empty location. The old backups stay where they are, but frost only shows the new ones |
+| Move them to another folder, drive, server or bucket | Move the whole folder (`frost.repo`, `chunks/`, `snapshots/` and `trees/`), then point Frost at it with `frost config set`, or with `frost init` for another kind of storage. Nothing uploads again |
+| Start a separate set of backups somewhere else | Run `frost init` and point it at the empty location. The old backups stay where they are, but Frost only shows the new ones |
 | Go back to backups you moved away from | Set the old location again |
 
-Self-hosted, local drive and S3 storage keep the same files under one folder, so a copy with rsync, rclone or a file manager moves a repository between them. Moving only `frost.repo` doesn't move your backups. `frost config set` checks a new location before saving it, and refuses one with no frost repository or a different key. It also refuses a copy with no snapshots when the old location still has snapshots for the same repository. `frost config edit` shows them as warnings before you save, so it can still make a change `set` refuses. A location changed in `config.toml` directly gets the same warnings the first time it's used, as [Editing `config.toml` directly](#editing-configtoml-directly) describes. If frost can't find your backups, the error and `frost status` say where they were last opened and how to get back to them.
+Self-hosted, local drive and S3 storage keep the same files under one folder, so a copy with rsync, rclone or a file manager moves a repository between them. Moving only `frost.repo` doesn't move your backups. `frost config set` checks a new location before saving it, and refuses one with no Frost repository or a different key. It also refuses a copy with no snapshots when the old location still has snapshots for the same repository. `frost config edit` shows them as warnings before you save, so it can still make a change `set` refuses. A location changed in `config.toml` directly gets the same warnings the first time it's used, as [Editing `config.toml` directly](#editing-configtoml-directly) describes. If Frost can't find your backups, the error and `frost status` say where they were last opened and how to get back to them.
 
 ### Environment variables
 
@@ -391,7 +391,7 @@ Values from the environment are never written to `config.toml`.
 | The scheduled job's schedule and install time, and when the last full backup ran, one per config folder | `~/.cache/frost/schedule-<config>.json` | `%LocalAppData%\frost\schedule-<config>.json` |
 | Scheduled run log, with launchd, cron and Task Scheduler | `~/.cache/frost/frost.log` | `%LocalAppData%\frost\frost.log` |
 
-On macOS and Linux, frost respects `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`. With systemd, scheduled runs log to the journal instead (`journalctl --user -u frost-backup`). On Windows, frost appends backup output, failures and update results to the log itself, including with tasks installed by an older version. Logs larger than 1 MiB are emptied before the next run.
+On macOS and Linux, Frost respects `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`. With systemd, scheduled runs log to the journal instead (`journalctl --user -u frost-backup`). On Windows, Frost appends backup output, failures and update results to the log itself, including with tasks installed by an older version. Logs larger than 1 MiB are emptied before the next run.
 
 The manifest is disposable. Removing it rebuilds the cache from storage and rereads source files on the next backup. Its persistent `.lock` file prevents concurrent cache writers; deleting a lock file isn't a way to stop a running process. [Installation](#installation) lists application folders.
 
@@ -406,9 +406,9 @@ The manifest is disposable. Removing it rebuilds the cache from storage and rere
 
 The job invokes the bundled runtime and launcher to run `frost backup --scheduled`, which logs plain lines instead of a progress bar and then checks for [updates](#automatic-updates). Every scheduler starts backups at `schedule.time` in local time: daily, weekly on `schedule.day`, or for shorter intervals at that time and every interval before and after it. systemd starts each run up to 5 minutes late, at random. The Windows task runs only while you're signed in, doesn't start on battery and stops if the computer is unplugged.
 
-macOS lists the job under System Settings > General > Login Items & Extensions as Node.js Foundation, the publisher of the bundled runtime. Switching it off there stops scheduled backups, and `frost status` says the job is missing. frost loads the job again whenever it reinstalls it, after a schedule change for example, even though the switch still shows off. To stop scheduled backups, run `frost config set schedule.enabled false`.
+macOS lists the job under System Settings > General > Login Items & Extensions as Node.js Foundation, the publisher of the bundled runtime. Switching it off there stops scheduled backups, and `frost status` says the job is missing. Frost loads the job again whenever it reinstalls it, after a schedule change for example, even though the switch still shows off. To stop scheduled backups, run `frost config set schedule.enabled false`.
 
-With systemd, frost tries to turn on lingering for your user (`loginctl enable-linger`) if it can confirm lingering is off. Lingering lets the timer run while you're logged out too. If frost can't enable it, backups may stop after logout. When removing the timer, frost turns lingering off only if it recorded enabling it.
+With systemd, Frost tries to turn on lingering for your user (`loginctl enable-linger`) if it can confirm lingering is off. Lingering lets the timer run while you're logged out too. If Frost can't enable it, backups may stop after logout. When removing the timer, Frost turns lingering off only if it recorded enabling it.
 
 Jobs keep the config and cache directories used when they're installed, including environment overrides. Run `frost init` again after changing those directories, or to update an older job that didn't keep them.
 
@@ -423,12 +423,12 @@ With `schedule.catch_up` on, a backup missed while the computer was off or aslee
 | launchd | When the Mac wakes, or at login after it was off |
 | systemd | When the machine wakes, or when the timer starts again after it was off: at boot with lingering, otherwise at login |
 | Task Scheduler | As soon as it can once the computer is back and you're signed in |
-| cron | Within 15 minutes. With catch-up on, cron starts frost every 15 minutes and frost decides |
+| cron | Within 15 minutes. With catch-up on, cron starts Frost every 15 minutes and Frost decides |
 
-Every scheduled run checks `schedule-<config>.json` in the cache folder first. It exits without a log line or update check when a full backup has already started for the latest run time, whether scheduled or by hand, or when the job was installed after that time. A run that starts more than 10 minutes late is catching up, and with `schedule.catch_up` off frost skips it. That includes the runs launchd and systemd always start on wake. If frost can't read its settings or that file, it backs up.
+Every scheduled run checks `schedule-<config>.json` in the cache folder first. It exits without a log line or update check when a full backup has already started for the latest run time, whether scheduled or by hand, or when the job was installed after that time. A run that starts more than 10 minutes late is catching up, and with `schedule.catch_up` off Frost skips it. That includes the runs launchd and systemd always start on wake. If Frost can't read its settings or that file, it backs up.
 
 A scheduled run that can't reach storage, often because the computer has only just woken or a drive or share isn't mounted yet, tries again for about 5 minutes. If another backup or a restore is using your backups, it waits up to an hour for it to finish.
 
 ## Exit codes
 
-frost exits with `0` on success and `1` on any error, including a backup or `status --verify` whose verification finds a problem.
+Frost exits with `0` on success and `1` on any error, including a backup or `status --verify` whose verification finds a problem.

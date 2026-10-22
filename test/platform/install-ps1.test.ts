@@ -166,7 +166,7 @@ test('install.ps1 installs a signed release with its bundled runtime', windows, 
   const result = await f.install();
   assert.equal(result.code, 0, result.stderr);
   for (const line of [
-    `Downloading frost ${f.version} for windows/`,
+    `Downloading Frost ${f.version} for windows/`,
     'Signature ok',
     'Checksum ok',
     'Installed ' + path.join(f.bin, 'frost.cmd'),
@@ -182,7 +182,7 @@ test('install.ps1 refuses a release signed by another key or a damaged download'
   for (const [options, message] of [
     [
       { signer: signingKey() },
-      'checksums.txt signature does not match official frost release key; installation aborted',
+      'checksums.txt signature does not match official Frost release key; installation aborted',
     ],
     [{ tamper: true }, 'checksum mismatch for frost_1.2.3_windows_'],
   ] as const) {

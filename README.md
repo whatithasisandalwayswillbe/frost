@@ -1,8 +1,8 @@
 <div align="center">
-<img src=".github/frost-icon.png" alt="frost" width="128" height="128" />
+<img src=".github/frost-icon.png" alt="Frost" width="128" height="128" />
 </div>
 
-<h3 align="center">frost</h3>
+<h3 align="center">Frost</h3>
 
 <p align="center">Encrypted, incremental backups to storage you control.</p>
 
@@ -23,7 +23,7 @@
 
 ---
 
-frost backs up your folders to your own server over SSH, a local drive, S3-compatible storage or [Permafrost](docs/PERMAFROST.md), and encrypts everything on your machine before it's stored. Releases include their runtime, so you don't need to install Node.js. Backups run from your OS scheduler, and `frost browse` opens your snapshots in the terminal.
+Frost backs up your folders to your own server over SSH, a local drive, S3-compatible storage or [Permafrost](docs/PERMAFROST.md), and encrypts everything on your machine before it's stored. Releases include their runtime, so you don't need to install Node.js. Backups run from your OS scheduler, and `frost browse` opens your snapshots in the terminal.
 
 ## Install
 
@@ -53,7 +53,7 @@ To install by hand, see [Installation](docs/CLI.md#installation), which also lis
 
 ## Get started
 
-Learn how to use frost at [getfro.st/help](https://getfro.st/help).
+Learn how to use Frost at [getfro.st/help](https://getfro.st/help).
 
 ## Contributing
 

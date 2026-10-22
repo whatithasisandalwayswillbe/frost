@@ -121,7 +121,7 @@ async function collect(dir, prefix, filter = () => true) {
 // versions/<version>/ holds the compiled JavaScript (minus the demo), the assets and the TOML parser.
 const build = path.join(root, 'dist');
 await collect(path.join(build, 'src'), `versions/${version}/src`, n => n.endsWith('.js') && n !== 'demo.js');
-if (!entries.some(e => e.name.endsWith('/src/cli/main.js'))) throw new Error('Build the frost CLI before packaging');
+if (!entries.some(e => e.name.endsWith('/src/cli/main.js'))) throw new Error('Build the Frost CLI before packaging');
 
 // A source build reports `dev`, and package.json's version is a placeholder. Packages get the release version written
 // into the CLI here, and the audit below reads it back.
@@ -172,7 +172,7 @@ add(
 add('LICENSE', await readFile(path.join(root, 'LICENSE')));
 add(
   'README.md',
-  'Run frost from this folder, or install it with the frost installer. The runtime stays at runtime/bin/node.\n',
+  'Run Frost from this folder, or install it with the Frost installer. The runtime stays at runtime/bin/node.\n',
 );
 
 // Sort by name bytes, not locale, so the archive doesn't depend on the build machine.

@@ -1,4 +1,4 @@
-// Tests for frost's own SSH key: the OpenSSH file format, reuse, repair of the public copy, and the command
+// Tests for Frost's own SSH key: the OpenSSH file format, reuse, repair of the public copy, and the command
 // that adds the key to a server.
 
 import test, { type TestContext } from 'node:test';
@@ -53,7 +53,7 @@ function seedOf(text: string): Buffer {
   return Buffer.from(inner().subarray(0, 32));
 }
 
-test('frost SSH key is a working ed25519 pair in OpenSSH format, reused and repaired', async t => {
+test('Frost SSH key is a working ed25519 pair in OpenSSH format, reused and repaired', async t => {
   const dir = await folder(t);
   const file = path.join(dir, 'ssh', 'frost_ed25519');
   const line = await ensureKey(file);
@@ -95,7 +95,7 @@ test('frost SSH key is a working ed25519 pair in OpenSSH format, reused and repa
   assert.equal(readFileSync(file, 'utf8'), text);
 
   writeFileSync(file, '-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n');
-  await assert.rejects(ensureKey(file), /can't use frost's SSH key at .*unencrypted ed25519 key in OpenSSH format/);
+  await assert.rejects(ensureKey(file), /can't use Frost's SSH key at .*unencrypted ed25519 key in OpenSSH format/);
   assert.equal(authorizedLine(line), 'restrict ' + line);
 });
 
@@ -114,7 +114,7 @@ const keygen =
     ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'OpenSSH', 'ssh-keygen.exe')
     : '/usr/bin/ssh-keygen';
 
-test('OpenSSH reads frost SSH key', { skip: !existsSync(keygen) }, async t => {
+test('OpenSSH reads Frost SSH key', { skip: !existsSync(keygen) }, async t => {
   const dir = await folder(t);
   const file = path.join(dir, 'ssh', 'frost_ed25519');
   const line = await ensureKey(file);

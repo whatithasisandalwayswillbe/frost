@@ -1,5 +1,5 @@
-// Reads and writes the archives the tools handle: ustar for pinned Node runtimes, npm packages and frost's Unix
-// packages, and zip for frost's Windows packages. Writers use zero times and owners and sort names by their
+// Reads and writes the archives the tools handle: ustar for pinned Node runtimes, npm packages and Frost's Unix
+// packages, and zip for Frost's Windows packages. Writers use zero times and owners and sort names by their
 // bytes, so the same input always gives the same archive.
 import { deflateRawSync, gzipSync } from 'node:zlib';
 

@@ -93,8 +93,8 @@ async function runOnce(dataset) {
   const { Engine } = await load('src/engine/index.js');
   const { errNotFound, errExists } = await load('src/core/storage.js');
 
-  // In-memory storage, so the timings measure frost rather than a disk or network. getOwned returns a fresh copy,
-  // which frost may erase or detach.
+  // In-memory storage, so the timings measure Frost rather than a disk or network. getOwned returns a fresh copy,
+  // which Frost may erase or detach.
   const objects = new Map();
   const backend = {
     async put(key, data) {

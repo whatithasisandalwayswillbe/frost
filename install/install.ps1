@@ -1,9 +1,9 @@
-# Installs the latest frost release on Windows.
+# Installs the latest Frost release on Windows.
 #
 #   irm https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.ps1 | iex
 #
 # Works in Windows PowerShell 5.1 and PowerShell 7. Downloads the package for your processor, checks that the
-# release's checksums.txt was signed by the frost release key, checks the download against it, and installs a
+# release's checksums.txt was signed by the Frost release key, checks the download against it, and installs a
 # launcher and its bundled runtime.
 #
 # Environment:
@@ -200,7 +200,7 @@ try {
     $sums = Join-Path $tmp 'checksums.txt'
     $signature = Join-Path $tmp 'checksums.txt.sig'
 
-    Write-Host "Downloading frost $version for windows/$arch"
+    Write-Host "Downloading Frost $version for windows/$arch"
     Save-Download "$base/$archive" $zip
     Save-Download "$base/checksums.txt" $sums
     Save-Download "$base/checksums.txt.sig" $signature
@@ -216,7 +216,7 @@ try {
     $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($want -ne $got) { throw "checksum mismatch for $archive (expected $want, got $got)" }
 
-    # The signature proves checksums.txt came from the frost release key, not just from whoever controls the
+    # The signature proves checksums.txt came from the Frost release key, not just from whoever controls the
     # download. Only the runtime comes out of the archive for this, and only an OpenJS Foundation signature lets
     # it run.
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
@@ -244,7 +244,7 @@ try {
     [IO.File]::WriteAllText($verify, $Verifier)
     $result = Invoke-Runtime $checkNode @($verify, $ReleaseKey, $sums, $signature)
     if ($LASTEXITCODE -ne 0 -or "$result" -cne 'ok') {
-      throw "checksums.txt signature does not match official frost release key; installation aborted"
+      throw "checksums.txt signature does not match official Frost release key; installation aborted"
     }
     Write-Host 'Signature ok'
     Write-Host 'Checksum ok'

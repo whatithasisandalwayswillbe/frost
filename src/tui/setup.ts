@@ -59,7 +59,7 @@ export class ConnectError extends Error {
 export interface SetupDeps {
   localKey?: Key;
   // acceptNewHostKey trusts a self-hosted server's SSH host key the first time it's seen, after someone added
-  // frost's key to it by hand.
+  // Frost's key to it by hand.
   connect(s: Storage, signal?: AbortSignal, options?: { acceptNewHostKey?: boolean }): Promise<RepoState>;
   newKey(): Key | Promise<Key>;
   unlock(s: Storage, phrase: string, signal?: AbortSignal): Promise<Key>;
@@ -73,9 +73,9 @@ export interface SetupDeps {
   elsewhere?(s: Storage): string;
   // Opens a web page in the browser, like the page where people get a Permafrost key.
   openBrowser?(url: string): void;
-  // Adds frost's SSH key to a self-hosted server with ssh, which asks for the password in the terminal.
+  // Adds Frost's SSH key to a self-hosted server with ssh, which asks for the password in the terminal.
   addKey?(s: Storage): Promise<void>;
-  // Where frost's public SSH key is, as setup shows it, and a way to show the file in the file manager.
+  // Where Frost's public SSH key is, as setup shows it, and a way to show the file in the file manager.
   keyFile?(): string;
   reveal?(file: string): void;
   // Cleans up a typed folder path and returns the indexes of listed folders inside it.
@@ -221,7 +221,7 @@ export class SetupModel {
 
   // provCur is the highlighted choice in the storage list and s3Cur the highlighted S3 service. prov is the
   // provider whose form is open, and pending holds the storage settings being tried. keyCur is the highlighted
-  // way of adding frost's SSH key.
+  // way of adding Frost's SSH key.
   provCur = 0;
   s3Cur = 0;
   prov = 0;
@@ -376,7 +376,7 @@ export class SetupModel {
 
   // Tries storage settings and keeps them if they work. A failure opens that provider's form with
   // the error, and puts the cursor on the field the error is about. A self-hosted server that won't
-  // take frost's SSH key yet goes to the screen for adding it instead.
+  // take Frost's SSH key yet goes to the screen for adding it instead.
   async connect(s: Storage, options?: { acceptNewHostKey?: boolean }): Promise<void> {
     this.busy = 'Connecting to your storage';
     this.err = '';
@@ -439,7 +439,7 @@ export class SetupModel {
     }
   }
 
-  // Hands the terminal to ssh, which adds frost's key to the server once the password is typed, then connects
+  // Hands the terminal to ssh, which adds Frost's key to the server once the password is typed, then connects
   // again. Without a terminal to hand over, as in tests, it runs as it is.
   async addKey(): Promise<void> {
     const run = () => this.deps.addKey!(this.pending);
@@ -961,8 +961,8 @@ export class SetupModel {
       case 'keyChoice':
         return {
           over: providers[selfHosted].name,
-          question: `Add frost's SSH key to ${this.pending.sftp.host}.`,
-          sub: "Authenticate with frost's SSH key so scheduled backups run seamlessly without password prompts.",
+          question: `Add Frost's SSH key to ${this.pending.sftp.host}.`,
+          sub: "Authenticate with Frost's SSH key so scheduled backups run seamlessly without password prompts.",
           body: [
             choice(this.keyCur === 0, 'Add it for me', 'needs your password once', 21, cw),
             choice(this.keyCur === 1, "I'll add it myself", 'shows where the key is', 21, cw),
@@ -972,7 +972,7 @@ export class SetupModel {
       case 'keyManual':
         return {
           over: providers[selfHosted].name,
-          question: "Add frost's key to the server.",
+          question: "Add Frost's key to the server.",
           sub: `Append the key in this file to ~/.ssh/authorized_keys on ${this.pending.sftp.host}, then press [enter].`,
           body: [inputBox({ value: this.deps.keyFile?.() ?? '' }, false, false, cw)],
           extra: wrapStyled(
@@ -1012,7 +1012,7 @@ export class SetupModel {
         return {
           over: 'Permafrost',
           question: 'Do you have a Permafrost access key?',
-          sub: 'This key is required to authenticate frost with Permafrost storage.',
+          sub: 'This key is required to authenticate Frost with Permafrost storage.',
           body: [
             choice(this.permaCur === 0, 'I have a key', '', 26, cw),
             choice(this.permaCur === 1, "I don't have a key yet", 'get one in your browser', 26, cw),
@@ -1034,7 +1034,7 @@ export class SetupModel {
 
       case 'schedule':
         return {
-          question: 'Select how often frost should back up:',
+          question: 'Select how often Frost should back up:',
           sub: 'Backups run automatically in the background.',
           body: this.schedOptions().map((o, i) => choice(i === this.schedCur, schedLabel(o), '', 40, cw)),
           foot: "Backup schedules can be changed using 'frost init'.",
@@ -1143,7 +1143,7 @@ export class SetupModel {
 
     if (skip) {
       return {
-        question: 'Which file names or patterns should frost exclude?',
+        question: 'Which file names or patterns should Frost exclude?',
         sub: 'Names or patterns. Use * as a wildcard, for example *.tmp, to exclude groups of files.',
         body: rows,
         help: items.length
@@ -1152,7 +1152,7 @@ export class SetupModel {
       };
     }
     return {
-      question: 'Which directories should frost back up?',
+      question: 'Which directories should Frost back up?',
       sub: 'Whole folders, with everything inside them.',
       body: rows,
       help: items.length
@@ -1280,7 +1280,7 @@ export class SetupModel {
       text.push(
         center(
           'text',
-          'frost is already set up on this machine. Review your configuration choices, apply edits, and save changes.',
+          'Frost is already set up on this machine. Review your configuration choices, apply edits, and save changes.',
         ),
         blank(w),
       );
@@ -1288,7 +1288,7 @@ export class SetupModel {
         text.push(row(pad(style('dim', padPlain(r.label, 10)) + style('text', truncate(r.value, tw - 10)), tw)));
     } else {
       text.push(
-        center('text', 'frost backs up your files.'),
+        center('text', 'Frost backs up your files.'),
         fill(w, 2),
         row(style('text', 'learn more at ') + style('link', projectLink)),
         blank(w),

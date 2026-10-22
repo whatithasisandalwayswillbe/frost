@@ -5,7 +5,7 @@
       "init"
     ],
     "input": "2\n\u003cendpoint\u003e\nus-east-1\nbackups\n\nAKID\nSECRET\n\u003csrc\u003e\n*.tmp\ny\n6h\n\nwrong\nwords\n",
-    "output": "\n┌  frost setup\n│\n│  Where should backups go?\n│    [1] Permafrost (one access key, nothing else to set up)\n│    [2] S3-compatible bucket (AWS, Backblaze B2, Cloudflare R2, Wasabi, Ceph, ...)\n│    [3] Self-hosted (your server over SSH)\n│    [4] Local drive (USB or internal disk)\n│  \u003e │    Endpoint (e.g. s3.us-east-1.amazonaws.com) │    Region (blank if your server or provider doesn't use one) │    Bucket │    Folder inside the bucket (/ for the top level) [frost] │    Access key ID │    Secret access key │  Connecting ... ok\n│\n│  Folders to back up (full paths, comma separated) │  Skip files matching (comma separated, - for none) [.DS_Store, Thumbs.db, *.tmp, *.swp, node_modules, .cache] │\n│  Back up automatically? [Y/n] │  How often? (hourly, 2h, 3h, 4h, 6h, 8h, 12h, daily, weekly) [daily] │\n├  your recovery phrase\n│\n│   1. abandon    7. abandon   13. abandon   19. abandon\n│   2. abandon    8. abandon   14. abandon   20. abandon\n│   3. abandon    9. abandon   15. abandon   21. abandon\n│   4. abandon   10. abandon   16. abandon   22. abandon\n│   5. abandon   11. abandon   17. abandon   23. abandon\n│   6. abandon   12. abandon   18. abandon   24. art\n│\n│  Write these 24 words down and keep them somewhere safe.\n│  They're the only way to restore your files if this machine is lost.\n│  Nobody can recover them for you: not whoever stores your backups, not us.\n│\n│  Press enter once you've written them down. │  To check: what's word #3? │  And word #18? ▲  That doesn't match.\n│  See the words again? [Y/n] ",
+    "output": "\n┌  Frost setup\n│\n│  Where would you like to store your backups?\n│    [1] Permafrost (one access key, nothing else to set up)\n│    [2] S3-compatible bucket (AWS, Backblaze B2, Cloudflare R2, Wasabi, Ceph, ...)\n│    [3] Self-hosted (your server over SSH)\n│    [4] Local drive (USB or internal disk)\n│  \u003e │    Endpoint (e.g. s3.us-east-1.amazonaws.com) │    Region (blank if your server or provider doesn't use one) │    Bucket │    Folder inside the bucket (/ for the top level) [frost] │    Access key ID │    Secret access key │  Connecting ... ok\n│\n│  Folders to back up (full paths, comma separated) │  Skip files matching (comma separated, - for none) [.DS_Store, Thumbs.db, *.tmp, *.swp, node_modules, .cache] │\n│  Back up automatically? [Y/n] │  How often? (hourly, 2h, 3h, 4h, 6h, 8h, 12h, daily, weekly) [daily] │\n├  your recovery phrase\n│\n│   1. abandon    7. abandon   13. abandon   19. abandon\n│   2. abandon    8. abandon   14. abandon   20. abandon\n│   3. abandon    9. abandon   15. abandon   21. abandon\n│   4. abandon   10. abandon   16. abandon   22. abandon\n│   5. abandon   11. abandon   17. abandon   23. abandon\n│   6. abandon   12. abandon   18. abandon   24. art\n│\n│  Write down these 24 words and store them in a secure location.\n│  This phrase is required to restore your files if this machine is lost or replaced.\n│  Your storage provider and the developers cannot recover these words for you.\n│\n│  Press Enter once you have saved them securely. │  Verification step: enter word #3: │  Enter word #18: ▲  That doesn't match.\n│  See the words again? [Y/n] ",
     "error": "no answer (input closed)",
     "version": "dev"
   },
@@ -15,7 +15,7 @@
       "init"
     ],
     "input": "2\n\u003cendpoint\u003e\nus-east-1\nbackups\n\nAKID\nSECRET\n\u003csrc\u003e\n*.tmp\ny\n6h\n\nabandon\nabandon\n",
-    "output": "\n┌  frost setup\n│\n│  Where should backups go?\n│    [1] Permafrost (one access key, nothing else to set up)\n│    [2] S3-compatible bucket (AWS, Backblaze B2, Cloudflare R2, Wasabi, Ceph, ...)\n│    [3] Self-hosted (your server over SSH)\n│    [4] Local drive (USB or internal disk)\n│  \u003e │    Endpoint (e.g. s3.us-east-1.amazonaws.com) │    Region (blank if your server or provider doesn't use one) │    Bucket │    Folder inside the bucket (/ for the top level) [frost] │    Access key ID │    Secret access key │  Connecting ... ok\n│\n│  Folders to back up (full paths, comma separated) │  Skip files matching (comma separated, - for none) [.DS_Store, Thumbs.db, *.tmp, *.swp, node_modules, .cache] │\n│  Back up automatically? [Y/n] │  How often? (hourly, 2h, 3h, 4h, 6h, 8h, 12h, daily, weekly) [daily] │\n├  your recovery phrase\n│\n│   1. abandon    7. abandon   13. abandon   19. abandon\n│   2. abandon    8. abandon   14. abandon   20. abandon\n│   3. abandon    9. abandon   15. abandon   21. abandon\n│   4. abandon   10. abandon   16. abandon   22. abandon\n│   5. abandon   11. abandon   17. abandon   23. abandon\n│   6. abandon   12. abandon   18. abandon   24. art\n│\n│  Write these 24 words down and keep them somewhere safe.\n│  They're the only way to restore your files if this machine is lost.\n│  Nobody can recover them for you: not whoever stores your backups, not us.\n│\n│  Press enter once you've written them down. │  To check: what's word #3? │  And word #18? ●  Correct.\n│\n│  config       \u003cconfig\u003e\\config.toml\n│  key          \u003cconfig\u003e\\key (readable only by you)\n│  schedule     6h via test scheduler\n│\n└  frost is set up. Preview your first backup with frost backup --dry-run, or start it with frost backup.\n\n",
+    "output": "\n┌  Frost setup\n│\n│  Where would you like to store your backups?\n│    [1] Permafrost (one access key, nothing else to set up)\n│    [2] S3-compatible bucket (AWS, Backblaze B2, Cloudflare R2, Wasabi, Ceph, ...)\n│    [3] Self-hosted (your server over SSH)\n│    [4] Local drive (USB or internal disk)\n│  \u003e │    Endpoint (e.g. s3.us-east-1.amazonaws.com) │    Region (blank if your server or provider doesn't use one) │    Bucket │    Folder inside the bucket (/ for the top level) [frost] │    Access key ID │    Secret access key │  Connecting ... ok\n│\n│  Folders to back up (full paths, comma separated) │  Skip files matching (comma separated, - for none) [.DS_Store, Thumbs.db, *.tmp, *.swp, node_modules, .cache] │\n│  Back up automatically? [Y/n] │  How often? (hourly, 2h, 3h, 4h, 6h, 8h, 12h, daily, weekly) [daily] │\n├  your recovery phrase\n│\n│   1. abandon    7. abandon   13. abandon   19. abandon\n│   2. abandon    8. abandon   14. abandon   20. abandon\n│   3. abandon    9. abandon   15. abandon   21. abandon\n│   4. abandon   10. abandon   16. abandon   22. abandon\n│   5. abandon   11. abandon   17. abandon   23. abandon\n│   6. abandon   12. abandon   18. abandon   24. art\n│\n│  Write down these 24 words and store them in a secure location.\n│  This phrase is required to restore your files if this machine is lost or replaced.\n│  Your storage provider and the developers cannot recover these words for you.\n│\n│  Press Enter once you have saved them securely. │  Verification step: enter word #3: │  Enter word #18: ●  Correct.\n│\n│  config       \u003cconfig\u003e\\config.toml\n│  key          \u003cconfig\u003e\\key (readable only by you)\n│  schedule     6h via test scheduler\n│\n└  Frost is set up. Preview your first backup using 'frost backup --dry-run', or begin the backup with 'frost backup'.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -35,7 +35,7 @@
       "status"
     ],
     "input": "",
-    "output": "\n┌  frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n│  last backup  never\n│  next backup  soon  6h via test scheduler\n│  health       not checked yet\n│  updates      not for development builds\n│\n└  No snapshots yet. Run frost backup.\n\n",
+    "output": "\n┌  Frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n│  last backup  never\n│  next backup  soon  6h via test scheduler\n│  health       not checked yet\n│  updates      not for development builds\n│\n└  No snapshots yet. Run frost backup.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -46,7 +46,7 @@
       "show"
     ],
     "input": "no\n",
-    "output": "\n┌  recovery phrase\n│\n▲  Anyone who sees this phrase can decrypt all of your backups.\n│  Make sure nobody's looking at your screen and you're not screen sharing.\n│  Type show to continue: ",
+    "output": "\n┌  recovery phrase\n│\n▲  Anyone with access to this recovery phrase can decrypt your backups.\n│  Ensure your screen is private and not being shared before proceeding.\n│  Type show to continue: ",
     "error": "cancelled",
     "version": "dev"
   },
@@ -57,7 +57,7 @@
       "show"
     ],
     "input": "",
-    "output": "\n┌  recovery phrase\n│\n▲  Anyone who sees this phrase can decrypt all of your backups.\n│  Make sure nobody's looking at your screen and you're not screen sharing.\n│  Type show to continue: ",
+    "output": "\n┌  recovery phrase\n│\n▲  Anyone with access to this recovery phrase can decrypt your backups.\n│  Ensure your screen is private and not being shared before proceeding.\n│  Type show to continue: ",
     "error": "no answer (input closed)\ncancelled",
     "version": "dev"
   },
@@ -68,7 +68,7 @@
       "show"
     ],
     "input": "show\n",
-    "output": "\n┌  recovery phrase\n│\n▲  Anyone who sees this phrase can decrypt all of your backups.\n│  Make sure nobody's looking at your screen and you're not screen sharing.\n│  Type show to continue: │\n│   1. abandon    7. abandon   13. abandon   19. abandon\n│   2. abandon    8. abandon   14. abandon   20. abandon\n│   3. abandon    9. abandon   15. abandon   21. abandon\n│   4. abandon   10. abandon   16. abandon   22. abandon\n│   5. abandon   11. abandon   17. abandon   23. abandon\n│   6. abandon   12. abandon   18. abandon   24. art\n│\n└  key fingerprint 6f154dc10058\n\n",
+    "output": "\n┌  recovery phrase\n│\n▲  Anyone with access to this recovery phrase can decrypt your backups.\n│  Ensure your screen is private and not being shared before proceeding.\n│  Type show to continue: │\n│   1. abandon    7. abandon   13. abandon   19. abandon\n│   2. abandon    8. abandon   14. abandon   20. abandon\n│   3. abandon    9. abandon   15. abandon   21. abandon\n│   4. abandon   10. abandon   16. abandon   22. abandon\n│   5. abandon   11. abandon   17. abandon   23. abandon\n│   6. abandon   12. abandon   18. abandon   24. art\n│\n└  key fingerprint 6f154dc10058\n\n",
     "error": "",
     "version": "dev"
   },
@@ -91,7 +91,7 @@
     ],
     "input": "notaword\n",
     "output": "\n┌  key verify\n│\n│  Recovery phrase: ",
-    "error": "that's 1 words, a recovery phrase has 24",
+    "error": "entered 1 word, but a recovery phrase must contain exactly 24 words",
     "version": "dev"
   },
   {
@@ -102,7 +102,7 @@
     ],
     "input": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \n",
     "output": "\n┌  key verify\n│\n│  Recovery phrase: ",
-    "error": "all the words are real, but they don't make a valid phrase. Check their order and spelling",
+    "error": "all words are valid individually, but together they do not form a valid recovery phrase; check their order and spelling",
     "version": "dev"
   },
   {
@@ -145,7 +145,7 @@
       "--dry-run"
     ],
     "input": "",
-    "output": "\n┌  dry run  s3://backups/frost/\n│\n│  files        1 (8 B)\n│\n│  Would upload new data from 1 file:\n│\n│         8 B  \u003csrc\u003e\\todo.txt\n│\n│  total        8 B new, in 1 chunks, out of 8 B scanned\n│\n└  Nothing was uploaded. Run without --dry-run to back up.\n\n",
+    "output": "\n┌  dry run  s3://backups/frost/\n│\n│  files        1 (8 B)\n│\n│  Would upload new data from 1 file:\n│\n│         8 B  \u003csrc\u003e\\todo.txt\n│\n│  total        8 B new, in 1 chunks, out of 8 B scanned\n│\n└  Nothing was uploaded. Run without the --dry-run flag to perform the backup.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -165,7 +165,7 @@
       "backup"
     ],
     "input": "",
-    "output": "\n┌  backup  s3://backups/frost/\n│\n│  files        1 (8 B)\n│  verified     ok \u003cage\u003e ago, 3 objects checked\n│\n└  Already backed up. Nothing has changed since snapshot \u003csnapshot1\u003e, saved \u003cage\u003e ago.\n\n",
+    "output": "\n┌  backup  s3://backups/frost/\n│\n│  files        1 (8 B)\n│  verified     ok \u003cage\u003e ago, 3 objects checked\n│\n└  Already backed up. No changes detected since snapshot \u003csnapshot1\u003e, saved \u003cage\u003e ago.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -176,7 +176,7 @@
       "--dry-run"
     ],
     "input": "",
-    "output": "\n┌  dry run  s3://backups/frost/\n│\n│  files        1 (8 B)\n│\n└  Nothing has changed since snapshot \u003csnapshot1\u003e, saved \u003cage\u003e ago, so there's nothing to back up.\n\n",
+    "output": "\n┌  dry run  s3://backups/frost/\n│\n│  files        1 (8 B)\n│\n└  No changes detected since snapshot \u003csnapshot1\u003e (saved \u003cage\u003e ago); nothing to back up.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -186,7 +186,7 @@
       "status"
     ],
     "input": "",
-    "output": "\n┌  frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n│  last backup  ok \u003cage\u003e ago, nothing new since \u003csnapshot1\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n│  health       ok 3 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 8 B, in 1 snapshot\n│\n├  snapshots\n│\n│  snapshot             taken                  files         size          new\n│  \u003csnapshot1\u003e    \u003cdate\u003e           1          8 B          8 B\n└\n\n",
+    "output": "\n┌  Frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n│  last backup  ok \u003cage\u003e ago, nothing new since \u003csnapshot1\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n│  health       ok 3 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 8 B, in 1 snapshot\n│\n├  snapshots\n│\n│  snapshot             taken                  files         size          new\n│  \u003csnapshot1\u003e    \u003cdate\u003e           1          8 B          8 B\n└\n\n",
     "error": "",
     "version": "dev"
   },
@@ -197,7 +197,7 @@
       "--dry-run"
     ],
     "input": "",
-    "output": "\n┌  dry run  s3://backups/frost/\n│\n│  changes      1 added, 1 changed\n│  files        2 (17 B)\n│\n│  Would upload new data from 2 files:\n│\n│         5 B  \u003csrc\u003e\\new.txt\n│        12 B  \u003csrc\u003e\\todo.txt\n│\n│  total        17 B new, in 2 chunks, out of 17 B scanned\n│\n└  Nothing was uploaded. Run without --dry-run to back up.\n\n",
+    "output": "\n┌  dry run  s3://backups/frost/\n│\n│  changes      1 added, 1 changed\n│  files        2 (17 B)\n│\n│  Would upload new data from 2 files:\n│\n│         5 B  \u003csrc\u003e\\new.txt\n│        12 B  \u003csrc\u003e\\todo.txt\n│\n│  total        17 B new, in 2 chunks, out of 17 B scanned\n│\n└  Nothing was uploaded. Run without the --dry-run flag to perform the backup.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -289,7 +289,7 @@
       "--verify"
     ],
     "input": "",
-    "output": "\n┌  frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n│  Checking 20 random chunks... done\n│\n│  last backup  ok \u003cage\u003e ago  \u003csnapshot3\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n│  health       ok 7 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
+    "output": "\n┌  Frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n│  Checking 20 random chunks... done\n│\n│  last backup  ok \u003cage\u003e ago  \u003csnapshot3\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n│  health       ok 7 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
     "error": "",
     "version": "dev"
   },
@@ -299,7 +299,7 @@
       "status"
     ],
     "input": "",
-    "output": "\n┌  frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n▲  last backup  ok, but not found: \u003csrc\u003e\\missing; 12 items couldn't be read; 2 busy files kept their previous copy \u003cage\u003e ago  \u003csnapshot3\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n│  health       ok 7 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
+    "output": "\n┌  Frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n▲  last backup  ok, but not found: \u003csrc\u003e\\missing; 12 items couldn't be read; 2 busy files kept their previous copy \u003cage\u003e ago  \u003csnapshot3\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n│  health       ok 7 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
     "error": "",
     "version": "dev"
   },
@@ -309,7 +309,7 @@
       "status"
     ],
     "input": "",
-    "output": "\n┌  frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n■  last backup  failed \u003cage\u003e ago: storage refused\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n│  health       ok 7 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
+    "output": "\n┌  Frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n■  last backup  failed \u003cage\u003e ago: storage refused\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n│  health       ok 7 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
     "error": "",
     "version": "dev"
   },
@@ -332,7 +332,7 @@
       "status"
     ],
     "input": "",
-    "output": "\n┌  frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n■  last backup  failed \u003cage\u003e ago: storage refused\n▲  next backup  scheduled job is missing, run `frost init` or `frost config set schedule.enabled true`\n│  health       ok 7 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
+    "output": "\n┌  Frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n■  last backup  failed \u003cage\u003e ago: storage refused\n▲  next backup  scheduled job missing; run `frost init` or `frost config set schedule.enabled true`\n│  health       ok 7 objects checked \u003cage\u003e ago\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
     "error": "",
     "version": "dev"
   },
@@ -345,7 +345,7 @@
       "true"
     ],
     "input": "",
-    "output": "\n┌  config  \u003cconfig\u003e\\config.toml\n│\n└  Scheduled job reinstalled. schedule.enabled was already set to that, but the job was missing.\n\n",
+    "output": "\n┌  config  \u003cconfig\u003e\\config.toml\n│\n└  Scheduled job reinstalled. schedule.enabled was already set to this value, but the scheduled job was missing.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -370,7 +370,7 @@
       "go"
     ],
     "input": "no\n",
-    "output": "\n┌  config  \u003cconfig\u003e\\config.toml\n│\n│  Opened config.toml in go. Save your changes, then close go to carry on.\n│\n│  schedule.every  daily to 6h\n│\n│  Type yes to save: ",
+    "output": "\n┌  config  \u003cconfig\u003e\\config.toml\n│\n│  Opened config.toml in go. Save your changes, then close go to continue.\n│\n│  schedule.every  daily to 6h\n│\n│  Type yes to save: ",
     "error": "cancelled, nothing was saved",
     "version": "dev"
   },
@@ -382,7 +382,7 @@
       "go"
     ],
     "input": "yes\n",
-    "output": "\n┌  config  \u003cconfig\u003e\\config.toml\n│\n│  Opened config.toml in go. Save your changes, then close go to carry on.\n│\n│  schedule.every  daily to 6h\n│\n│  Type yes to save: │\n└  Saved. Scheduled job updated: 6h.\n\n",
+    "output": "\n┌  config  \u003cconfig\u003e\\config.toml\n│\n│  Opened config.toml in go. Save your changes, then close go to continue.\n│\n│  schedule.every  daily to 6h\n│\n│  Type yes to save: │\n└  Saved. Scheduled job updated: 6h.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -394,7 +394,7 @@
       "go"
     ],
     "input": "\n",
-    "output": "\n┌  config  \u003cconfig\u003e\\config.toml\n│\n│  Opened config.toml in go. Save your changes, then close go to carry on.\n│\n│  go didn't wait for you. Save and close config.toml, then press enter. └  No changes, so nothing was saved.\n\n",
+    "output": "\n┌  config  \u003cconfig\u003e\\config.toml\n│\n│  Opened config.toml in go. Save your changes, then close go to continue.\n│\n│  go did not wait for editing to finish. Save and close config.toml, then press Enter. └  No changes, so nothing was saved.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -419,7 +419,7 @@
       "\u003ccache\u003e\\reference.log"
     ],
     "input": "",
-    "output": "[\u003ctime\u003e] scheduled backup starting\n\n┌  backup  s3://backups/frost/\n│\n│  files        1 (12 B)\n│  verified     ok \u003cage\u003e ago, 7 objects checked\n│\n└  Already backed up. Nothing has changed since snapshot \u003csnapshot3\u003e, saved \u003cage\u003e ago.\n\n",
+    "output": "[\u003ctime\u003e] scheduled backup starting\n\n┌  backup  s3://backups/frost/\n│\n│  files        1 (12 B)\n│  verified     ok \u003cage\u003e ago, 7 objects checked\n│\n└  Already backed up. No changes detected since snapshot \u003csnapshot3\u003e, saved \u003cage\u003e ago.\n\n",
     "error": "",
     "version": "dev"
   },
@@ -430,7 +430,7 @@
       "--verify"
     ],
     "input": "",
-    "output": "\n┌  frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n│  Checking 20 random chunks... done\n│\n│  last backup  ok \u003cage\u003e ago, nothing new since \u003csnapshot3\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n■  health       1 of 7 checks failed \u003cage\u003e ago\n│               chunk 08265e39e0b2: decryption failed: wrong key or corrupted data\n│               Run a new backup to re-upload anything missing, then `frost status --verify`.\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
+    "output": "\n┌  Frost  dev  s3://backups/frost/  key 6f154dc10058\n│\n│  Checking 20 random chunks... done\n│\n│  last backup  ok \u003cage\u003e ago, nothing new since \u003csnapshot3\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n■  health       1 of 7 checks failed \u003cage\u003e ago\n│               chunk 08265e39e0b2: decryption failed: wrong key or corrupted data\n│               Run a new backup to upload missing data, followed by `frost status --verify`.\n│  updates      not for development builds\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
     "error": "verification failed",
     "version": "dev"
   },
@@ -461,7 +461,7 @@
       "update"
     ],
     "input": "",
-    "output": "\n┌  new release  v0.2.0, you have v0.1.0\n│\n│  notes        https://example.com/v0.2.0\n│  download     frost_x.tar.gz\n│  installed    ok /opt/frost/bin/frost\n│\n└  Updated to frost v0.2.0\n\n",
+    "output": "\n┌  new release  v0.2.0, you have v0.1.0\n│\n│  notes        https://example.com/v0.2.0\n│  download     frost_x.tar.gz\n│  installed    ok /opt/frost/bin/frost\n│\n└  Updated to Frost v0.2.0\n\n",
     "error": "",
     "version": "v0.1.0"
   },
@@ -471,7 +471,7 @@
       "status"
     ],
     "input": "",
-    "output": "\n┌  frost  v0.1.0  s3://backups/frost/  key 6f154dc10058\n│\n│  last backup  ok \u003cage\u003e ago, nothing new since \u003csnapshot3\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n■  health       1 of 7 checks failed \u003cage\u003e ago\n│               chunk 08265e39e0b2: decryption failed: wrong key or corrupted data\n│               Run a new backup to re-upload anything missing, then `frost status --verify`.\n│  updates      automatic, v0.2.0 installs after the next backup\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
+    "output": "\n┌  Frost  v0.1.0  s3://backups/frost/  key 6f154dc10058\n│\n│  last backup  ok \u003cage\u003e ago, nothing new since \u003csnapshot3\u003e\n│  next backup  ~in \u003cduration\u003e  6h via test scheduler\n■  health       1 of 7 checks failed \u003cage\u003e ago\n│               chunk 08265e39e0b2: decryption failed: wrong key or corrupted data\n│               Run a new backup to upload missing data, followed by `frost status --verify`.\n│  updates      automatic, v0.2.0 installs after the next backup\n│  protected    1 files, 12 B, in 3 snapshots\n│\n├  snapshots\n│\n│  snapshot                 taken                  files         size          new\n│  \u003csnapshot3\u003e    \u003cdate\u003e           1         12 B          0 B\n│  \u003csnapshot2\u003e      \u003cdate\u003e           2         17 B         17 B\n│  \u003csnapshot1\u003e        \u003cdate\u003e           1          8 B          8 B\n└\n\n",
     "error": "",
     "version": "v0.1.0"
   },
@@ -501,7 +501,7 @@
       "update"
     ],
     "input": "",
-    "output": "\nfrost v0.1.0, no releases have been published yet\n\n",
+    "output": "\nFrost v0.1.0, no releases have been published yet\n\n",
     "error": "",
     "version": "v0.1.0"
   },
@@ -511,7 +511,7 @@
       "update"
     ],
     "input": "",
-    "output": "\nfrost v0.1.0 is the latest release\n\n",
+    "output": "\nFrost v0.1.0 is the latest release\n\n",
     "error": "",
     "version": "v0.1.0"
   },
@@ -532,7 +532,7 @@
     ],
     "input": "",
     "output": "",
-    "error": "can't find the frost binary: installation missing",
+    "error": "can't find the Frost binary: installation missing",
     "version": "v0.1.0"
   }
 ]

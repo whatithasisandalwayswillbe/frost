@@ -1,4 +1,4 @@
-// The launcher every package ships. The frost command and scheduled jobs run it with the bundled runtime. It starts
+// The launcher every package ships. The Frost command and scheduled jobs run it with the bundled runtime. It starts
 // the version that current.json names. An update replaces the version folder and current.json but never this file, so
 // each install keeps the launcher it was installed with. Keep it small, and keep it working with every version folder,
 // past and future. It relies only on current.json's `version` and on versions/<version>/src/cli/main.js.

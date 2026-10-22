@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds and signs frost packages. Only maintainers run this script.
+# Builds and signs Frost packages. Only maintainers run this script.
 #
 #   scripts/release.sh --release v0.1.0
 #   scripts/release.sh --pre-release v0.2.0-rc.1
@@ -122,7 +122,7 @@ npm audit
 for script in install/install.sh scripts/release.sh; do bash -n "$script"; done
 shellcheck install/install.sh scripts/release.sh
 [ -t 0 ] || die 'A terminal is required to confirm the build'
-printf 'Build and sign frost %s? [y/N] ' "$version"
+printf 'Build and sign Frost %s? [y/N] ' "$version"
 IFS= read -r answer
 case "$answer" in y | Y) ;; *) exit 0 ;; esac
 # Build and audit a package per target. package.mjs prints each archive's checksums.txt line.
@@ -153,7 +153,7 @@ fi
 # Publish the packages, checksums and signature to GitHub.
 flags=()
 [ "$mode" != --pre-release ] || flags+=(--prerelease)
-gh release create "$version" --repo "$repo" --target "$(git rev-parse HEAD)" --title "frost $version" \
+gh release create "$version" --repo "$repo" --target "$(git rev-parse HEAD)" --title "Frost $version" \
   --notes-file "$out/release-notes.md" "${flags[@]}" "$out"/frost_* "$out/checksums.txt" "$out/checksums.txt.sig"
 
 # Publish getfrost once its release exists, since it downloads that release. npm asks for a one-time code.

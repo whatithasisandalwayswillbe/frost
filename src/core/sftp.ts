@@ -1,5 +1,5 @@
 // Client for self-hosted storage over SSH. It runs the system OpenSSH client with the sftp subsystem and
-// speaks the parts of SFTP version 3 that frost needs over its pipes, so the server needs nothing but SSH.
+// speaks the parts of SFTP version 3 that Frost needs over its pipes, so the server needs nothing but SSH.
 // Objects are files under one folder, named by their keys: the same layout as an S3 bucket, so a
 // repository can be copied between them.
 
@@ -72,7 +72,7 @@ const openWrite = 0x02;
 const openCreate = 0x08;
 const openExclusive = 0x20;
 
-// The largest packet frost accepts. OpenSSH sends at most 256 KiB. Anything far bigger is text that
+// The largest packet Frost accepts. OpenSSH sends at most 256 KiB. Anything far bigger is text that
 // a login script printed before SFTP started.
 const maxPacket = 1 << 20;
 // Requests per file kept in flight at once while reading or writing.
@@ -148,7 +148,7 @@ export function classify(stderr: string, exit: number | null, host: string): SSH
     );
   if (/Host key verification failed|No \S+ host key is known/i.test(text))
     return new SSHError("the server isn't one of your known SSH hosts", 'unknownhost');
-  if (/Permission denied/i.test(text)) return new SSHError("the server didn't accept frost's SSH key", 'login');
+  if (/Permission denied/i.test(text)) return new SSHError("the server didn't accept Frost's SSH key", 'login');
   if (/subsystem request failed/i.test(text)) return new SSHError("the server doesn't offer SFTP", 'nosftp');
   const network: [RegExp, string][] = [
     [/Could not resolve hostname|Name or service not known|nodename nor servname|No such host/i, 'ENOTFOUND'],
@@ -205,7 +205,7 @@ class Reader {
     return this.bytes.readBigUInt64BE(this.#take(8));
   }
 
-  // A 64-bit count frost does arithmetic with, so it has to be a safe integer.
+  // A 64-bit count Frost does arithmetic with, so it has to be a safe integer.
   count(): number {
     const value = this.u64();
     if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('sftp: malformed reply');
@@ -226,7 +226,7 @@ class Reader {
     return this.#at >= this.bytes.length;
   }
 
-  // File attributes. frost only uses the size and the file type from the permissions.
+  // File attributes. Frost only uses the size and the file type from the permissions.
   attrs(): { size?: number; mode?: number } {
     const flags = this.u32();
     const attrs: { size?: number; mode?: number } = {};
@@ -288,7 +288,7 @@ class Session {
     child.on('error', error =>
       this.#fail(
         (error as NodeJS.ErrnoException).code === 'ENOENT'
-          ? new SSHError("frost needs the OpenSSH client (ssh), and it isn't installed", 'noclient')
+          ? new SSHError("Frost needs the OpenSSH client (ssh), and it isn't installed", 'noclient')
           : new SSHError('ssh: ' + error.message, 'transport', (error as NodeJS.ErrnoException).code),
       ),
     );
@@ -581,7 +581,7 @@ function cleanFolder(value: string): string {
   return folder;
 }
 
-// Client for a folder on a server reached over SSH. It logs in with frost's own key and never prompts, so
+// Client for a folder on a server reached over SSH. It logs in with Frost's own key and never prompts, so
 // it works the same in scheduled backups.
 export class SFTPBackend implements Backend {
   #host: string;
@@ -589,7 +589,7 @@ export class SFTPBackend implements Backend {
   #root: string;
   #current?: Session;
   #starting?: Promise<Session>;
-  // Accepts a server's host key the first time, for setup after a person added frost's key by hand. A
+  // Accepts a server's host key the first time, for setup after a person added Frost's key by hand. A
   // changed key is still refused.
   acceptNewHostKey = false;
 
@@ -626,7 +626,7 @@ export class SFTPBackend implements Backend {
 
   // The ssh command line. -T, -x and -a turn off the terminal, X11 and agent forwarding. BatchMode makes
   // ssh fail instead of asking for anything. The agent is disabled; explicit IdentityFile entries in
-  // the user's SSH config may also be offered alongside frost's key. The host comes after `--`.
+  // the user's SSH config may also be offered alongside Frost's key. The host comes after `--`.
   args(): string[] {
     return [
       '-T',
@@ -691,7 +691,7 @@ export class SFTPBackend implements Backend {
         await access(this.options.identity);
       } catch {
         throw new SSHError(
-          `frost's SSH key was not found (${this.options.identity}). Run \`frost init\` to regenerate it`,
+          `Frost's SSH key was not found (${this.options.identity}). Run \`frost init\` to regenerate it`,
           'nokey',
         );
       }
@@ -786,7 +786,7 @@ export class SFTPBackend implements Backend {
       // A conditional create needs hard links, and fails closed without them.
       if (exclusive && !session.extensions.has('hardlink@openssh.com'))
         throw new UnsafeFolderError(
-          'server does not support hard link creation via SFTP. frost requires hard links for safe atomic writes (OpenSSH server recommended)',
+          'server does not support hard link creation via SFTP. Frost requires hard links for safe atomic writes (OpenSSH server recommended)',
         );
       const temp = await this.#writeTemp(session, key, data, signal);
       const remove = () => session.simple(fxp.remove, [str(temp)], 'remove').catch(() => {});
@@ -818,7 +818,7 @@ export class SFTPBackend implements Backend {
       if (await session.exists(target, signal)) throw errExists;
       if (error.status !== fx.failure && error.status !== fx.opUnsupported) throw error;
       throw new UnsafeFolderError(
-        `the server cannot create hard links in ${this.#root}. frost requires them to create backup metadata safely. Use a filesystem that supports hard links, such as ext4, Btrfs, XFS, ZFS, APFS, or NTFS`,
+        `the server cannot create hard links in ${this.#root}. Frost requires them to create backup metadata safely. Use a filesystem that supports hard links, such as ext4, Btrfs, XFS, ZFS, APFS, or NTFS`,
         { cause: error },
       );
     }

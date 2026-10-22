@@ -1,5 +1,5 @@
-// Builds the getfrost npm package, which gives npm and pnpm a frost command. It holds install/npm.mjs and copies of the
-// compiled updater modules it imports, and installs frost's signed release on first use. release.sh runs it after a
+// Builds the getfrost npm package, which gives npm and pnpm a Frost command. It holds install/npm.mjs and copies of the
+// compiled updater modules it imports, and installs Frost's signed release on first use. release.sh runs it after a
 // build as `npm-package.mjs --version <vX.Y.Z> --out <dir>`.
 import { access, writeFile, mkdir, readdir, copyFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -29,10 +29,10 @@ export const nodeFloor = 22;
 
 // The bin checks the Node.js version before it loads anything that needs a newer one.
 const bin = `#!/usr/bin/env node
-// The frost command from the getfrost package. lib/npm.mjs installs frost on first use and runs it.
+// The Frost command from the getfrost package. lib/npm.mjs installs Frost on first use and runs it.
 const [major] = process.versions.node.split('.').map(Number);
 if (major < ${nodeFloor}) {
-  console.error('getfrost: installing frost requires Node.js v${nodeFloor} or newer (detected version: ' + process.version + ')');
+  console.error('getfrost: installing Frost requires Node.js v${nodeFloor} or newer (detected version: ' + process.version + ')');
   process.exitCode = 1;
 } else {
   import('./lib/npm.mjs')
@@ -46,15 +46,15 @@ if (major < ${nodeFloor}) {
 
 const readme = `# getfrost
 
-Installs and runs [frost](https://getfro.st), encrypted, incremental backups to storage you choose.
+Installs and runs [Frost](https://getfro.st), encrypted, incremental backups to storage you choose.
 
 \`\`\`sh
 npm install -g getfrost
 \`\`\`
 
-The first \`frost\` command downloads the signed frost release for your computer, checks its signature and installs it in your user profile. Every command after that runs the installed frost, which keeps itself up to date. It needs Node.js ${nodeFloor} or newer.
+The first \`frost\` command downloads the signed Frost release for your computer, checks its signature and installs it in your user profile. Every command after that runs the installed Frost, which keeps itself up to date. It needs Node.js ${nodeFloor} or newer.
 
-Learn how to use frost at [getfro.st/help](https://getfro.st/help).
+Learn how to use Frost at [getfro.st/help](https://getfro.st/help).
 `;
 
 // Writes the package into out, which must be empty or missing, and returns its package.json.
@@ -67,7 +67,7 @@ export async function buildPackage(version, out) {
   const manifest = {
     name: 'getfrost',
     version: version.slice(1),
-    description: 'Encrypted, incremental backups to storage you choose. Installs and runs frost.',
+    description: 'Encrypted, incremental backups to storage you choose. Installs and runs Frost.',
     homepage: 'https://getfro.st',
     repository: { type: 'git', url: 'git+https://github.com/whatithasisandalwayswillbe/frost.git' },
     license: 'BSD-3-Clause',
@@ -86,7 +86,7 @@ export async function buildPackage(version, out) {
   for (const name of modules) {
     const source = path.join(root, 'dist/src/platform', name);
     await access(source).catch(() => {
-      throw new Error(`Build frost before packaging: ${name} is missing`);
+      throw new Error(`Build Frost before packaging: ${name} is missing`);
     });
     await copyFile(source, path.join(out, 'lib', name));
   }

@@ -68,7 +68,7 @@ test('config full TOML syntax roundtrips and rejects unknown keys and wrong type
   assert.equal(interval(' 2H '), 7200000);
   assert.throws(() => interval('5h'));
 
-  // The frost variable wins over the AWS fallback, and the original config isn't changed.
+  // The Frost variable wins over the AWS fallback, and the original config isn't changed.
   const env = applyEnv(c, { FROST_S3_SECRET_ACCESS_KEY: 'from environment', AWS_SECRET_ACCESS_KEY: 'fallback' });
   assert.equal(env.storage.s3.secret_access_key, 'from environment');
   assert.equal(c.storage.s3.secret_access_key, 'test credential');
@@ -349,7 +349,7 @@ test('manifest compacts bounded journals without losing cached state', async t =
 });
 
 // The lock file starts with a stale record. Ownership comes from the OS lock, never from that record,
-// and frost never rewrites or replaces the lock file.
+// and Frost never rewrites or replaces the lock file.
 test('manifest kernel locks survive reopen and release after an unclosed process exits', async t => {
   const folder = await mkdtemp(path.join(os.tmpdir(), 'frost-manifest-lock-'));
   t.after(() => rm(folder, { recursive: true, force: true }));
@@ -387,7 +387,7 @@ test('manifest kernel locks survive reopen and release after an unclosed process
   assert.equal(await readFile(lock, 'utf8'), JSON.stringify({ pid: process.pid, token: 'old-lock-record' }));
 });
 
-// A scheduled backup waits longer than a second for another frost process, and can be cancelled while
+// A scheduled backup waits longer than a second for another Frost process, and can be cancelled while
 // it waits.
 test('manifest lock waits can be longer than a second and be cancelled', async t => {
   const folder = await mkdtemp(path.join(os.tmpdir(), 'frost-manifest-wait-'));

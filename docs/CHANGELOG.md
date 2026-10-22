@@ -1,20 +1,20 @@
 # Changelog
 
-Notable changes to frost, newest release first. Each release lists what was added, fixed and improved, in that order, and leaves out empty sections.
+Notable changes to Frost, newest release first. Each release lists what was added, fixed and improved, in that order, and leaves out empty sections.
 
 ## v0.1.0
 
 ### Added
 
-- **frost backs up to your own server over SSH.** Any machine with an SSH server works, from a NAS or Raspberry Pi to a VPS, with nothing to install on it. frost logs in with its own SSH key, so scheduled backups never need a password, and `frost init` can add the key to the server for you.
+- **Frost backs up to your own server over SSH.** Any machine with an SSH server works, from a NAS or Raspberry Pi to a VPS, with nothing to install on it. Frost logs in with its own SSH key, so scheduled backups never need a password, and `frost init` can add the key to the server for you.
 
-- **frost backs up to a local drive.** Pick a folder on an internal or external drive. frost never creates that folder after setup, so an unplugged drive can't send backups to another disk, and a scheduled backup waits a few minutes for a drive that isn't mounted yet.
+- **Frost backs up to a local drive.** Pick a folder on an internal or external drive. Frost never creates that folder after setup, so an unplugged drive can't send backups to another disk, and a scheduled backup waits a few minutes for a drive that isn't mounted yet.
 
 - **Backups move between drives, servers and buckets.** Self-hosted, local drive and S3 storage keep the same files under one folder, so copying that folder moves a repository without uploading it again.
 
-- **frost backs up to S3-compatible storage.** Everything is encrypted on your machine first, and kept in a `frost/` folder inside the bucket so the bucket can hold other things too.
+- **Frost backs up to S3-compatible storage.** Everything is encrypted on your machine first, and kept in a `frost/` folder inside the bucket so the bucket can hold other things too.
 
-- **frost can store backups on Permafrost.** Connecting takes one access key, with no bucket, region or endpoint to set up. You can also point frost at your own Permafrost server.
+- **Frost can store backups on Permafrost.** Connecting takes one access key, with no bucket, region or endpoint to set up. You can also point Frost at your own Permafrost server.
 
 - **`frost init` points you to a Permafrost key.** If you don't have one yet, it opens getfro.st/perma in your browser, and you paste the key it gives you. If Permafrost rejects a key or an upload later, commands that access backups give its reason and point you to `frost init`.
 
@@ -24,9 +24,9 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 - **Backups only upload what changed.** Files are split where their content says, not at fixed offsets, so an edit only re-uploads the chunk or two around it. Files that haven't changed since the last run aren't even read.
 
-- **Interrupted backups pick up where they stopped.** Uploaded chunks are recorded as the run goes, so the next run skips them. On a new machine, frost rebuilds its record from what's already in storage and only uploads new data.
+- **Interrupted backups pick up where they stopped.** Uploaded chunks are recorded as the run goes, so the next run skips them. On a new machine, Frost rebuilds its record from what's already in storage and only uploads new data.
 
-- **Backups rarely list your storage.** frost trusts its local record of what's stored and compares it with storage once a week, after a check finds something missing, or when the storage moved. `frost status --verify` always compares.
+- **Backups rarely list your storage.** Frost trusts its local record of what's stored and compares it with storage once a week, after a check finds something missing, or when the storage moved. `frost status --verify` always compares.
 
 - **Snapshots have short, readable IDs.** IDs look like `maple-absurd-3f1c`. You can restore by ID or by time, like `latest`, `3 days ago` or `2026-09-20`.
 
@@ -40,7 +40,7 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 - **A missing folder doesn't stop the others.** A configured folder that isn't there, like one on an unplugged drive, is skipped and the rest are backed up. `frost backup` and `frost status` say which one wasn't found.
 
-- **An unreadable folder fails the backup.** Items inside a folder that can't be read are skipped and counted in `frost status`, but a backed-up folder frost can't read at all fails the run rather than saving nothing. On macOS, the error explains how to grant Full Disk Access.
+- **An unreadable folder fails the backup.** Items inside a folder that can't be read are skipped and counted in `frost status`, but a backed-up folder Frost can't read at all fails the run rather than saving nothing. On macOS, the error explains how to grant Full Disk Access.
 
 - **Backups don't download files that are only in iCloud.** On macOS, a file iCloud keeps only online is skipped and listed rather than downloaded, so a backup doesn't fill your disk or wait on downloads.
 
@@ -48,7 +48,7 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 - **Restores download in parallel.** Chunks download 8 at a time across all the files being restored. A chunk that repeats, like the empty parts of a disk image, downloads once.
 
-- **Interrupted restores carry on.** If a restore stops, frost prints the command that continues it in the same folder. Files already there are checked and skipped, and the file it was writing picks up from its last good chunk.
+- **Interrupted restores carry on.** If a restore stops, Frost prints the command that continues it in the same folder. Files already there are checked and skipped, and the file it was writing picks up from its last good chunk.
 
 - **Restoring over the originals skips what's already right.** `frost restore --overwrite` checks each original against the snapshot first, and files that already match aren't downloaded.
 
@@ -56,13 +56,13 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 - **The browser can pick a restore folder.** "New folder elsewhere" opens Finder, Explorer or a Linux folder picker, and you type the folder when there isn't one.
 
-- **Restores from the browser open in your file manager.** When a restore finishes, frost shows what it restored in Finder, Explorer or your Linux file manager. Nothing opens over SSH or when the restore fails.
+- **Restores from the browser open in your file manager.** When a restore finishes, Frost shows what it restored in Finder, Explorer or your Linux file manager. Nothing opens over SSH or when the restore fails.
 
-- **Backups check themselves.** After a backup that saves a snapshot, and at least once a day otherwise, frost downloads a random sample of chunks and checks them against their IDs. `frost status` shows the result, and `frost status --verify` runs a check on demand.
+- **Backups check themselves.** After a backup that saves a snapshot, and at least once a day otherwise, Frost downloads a random sample of chunks and checks them against their IDs. `frost status` shows the result, and `frost status --verify` runs a check on demand.
 
 - **Storage changes are checked.** `frost config set` checks a new storage location before saving it, and refuses one with no backups, backups made with another key, or a `frost.repo` without its snapshots. `frost init` asks before starting a separate set of backups when this machine's are somewhere else.
 
-- **frost explains when it can't find your backups.** The error and `frost status` say where they were last and how to get back to them, and a scheduled backup that failed because of it shows in `frost status`. Snapshots that disappear from storage are reported too.
+- **Frost explains when it can't find your backups.** The error and `frost status` say where they were last and how to get back to them, and a scheduled backup that failed because of it shows in `frost status`. Snapshots that disappear from storage are reported too.
 
 - **Backups run on a schedule without a daemon.** `frost init` installs a launchd, systemd, cron or Task Scheduler job depending on your OS, and on Linux it runs while you're logged out too. Changing the schedule with `frost config set` updates the job.
 
@@ -76,24 +76,24 @@ Notable changes to frost, newest release first. Each release lists what was adde
 
 - **Editing `config.toml` by hand takes effect.** The next command updates the scheduled job to match a changed schedule and says so, and checks a new storage location the way `frost config edit` does. Scheduled runs follow the file as it is, and on Linux they update their own job.
 
-- **Changing the schedule never stops a running backup.** On macOS and Windows, a change made with `frost config`, `frost init` or a text editor while a scheduled backup runs waits for it, and frost applies the change in the background as soon as the backup finishes.
+- **Changing the schedule never stops a running backup.** On macOS and Windows, a change made with `frost config`, `frost init` or a text editor while a scheduled backup runs waits for it, and Frost applies the change in the background as soon as the backup finishes.
 
 - **`frost backup` asks first near a scheduled backup.** In a terminal, it says when a scheduled backup starts within the hour or finished within the last hour, and asks whether to back up anyway. If a scheduled backup is running, it says so.
 
-- **frost packages include the runtime.** macOS, Linux and Windows packages contain Node.js, frost's scripts and assets, so users don't need to install Node.js or npm. The runtime stays at a fixed path while updates activate versioned scripts.
+- **Frost packages include the runtime.** macOS, Linux and Windows packages contain Node.js, Frost's scripts and assets, so users don't need to install Node.js or npm. The runtime stays at a fixed path while updates activate versioned scripts.
 
-- **Windows scheduled backups use the signed bundled runtime.** The Task Scheduler task names frost as its author, says how to remove it, and runs the launcher with the saved config and cache folders.
+- **Windows scheduled backups use the signed bundled runtime.** The Task Scheduler task names Frost as its author, says how to remove it, and runs the launcher with the saved config and cache folders.
 
 - **Windows scheduled runs have a log.** Backup output, failures and update results go to `frost.log` in the cache folder, and logs over 1 MiB are trimmed before the next run.
 
-- **frost updates itself.** `frost update` installs the latest release, and scheduled backups do it on their own at most once every 20 hours. Each release is checked against a signing key built into frost before anything is replaced, and setting `update.auto` to `false` only tells you about new ones.
+- **Frost updates itself.** `frost update` installs the latest release, and scheduled backups do it on their own at most once every 20 hours. Each release is checked against a signing key built into Frost before anything is replaced, and setting `update.auto` to `false` only tells you about new ones.
 
 - **`frost key` manages your recovery phrase.** It shows the phrase behind a confirmation, checks a phrase against your backups, or imports one on a new machine.
 
 - **`frost config edit` saves only after you check the changes.** It opens a copy of `config.toml`, lists the settings you changed, and saves the copy as written, comments and all, once you type `yes`. A file that doesn't parse goes back to the editor instead of breaking scheduled backups, and a `config.toml` that's already broken can still be opened and fixed.
 
-- **frost installs with one line.** `install/install.sh` detects macOS, Linux, WSL or Git Bash, checks signed checksums, and installs the complete package with a launcher. It requires `ssh-keygen` from OpenSSH 8.1 or newer and refuses an unverified package.
+- **Frost installs with one line.** `install/install.sh` detects macOS, Linux, WSL or Git Bash, checks signed checksums, and installs the complete package with a launcher. It requires `ssh-keygen` from OpenSSH 8.1 or newer and refuses an unverified package.
 
 - **Windows installs from PowerShell.** `irm https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.ps1 | iex` checks the release the same way, using the release's own OpenJS-signed runtime, so it needs nothing else installed. It puts `frost` in `%LocalAppData%\frost\bin` and adds that folder to your `PATH`.
 
-- **npm and pnpm can install frost.** `npm install -g getfrost` or `pnpm add -g getfrost` gives you a `frost` command that installs the signed release on its first run and then runs it. frost keeps updating itself, and the package needs Node.js 22 or newer.
+- **npm and pnpm can install Frost.** `npm install -g getfrost` or `pnpm add -g getfrost` gives you a `frost` command that installs the signed release on its first run and then runs it. Frost keeps updating itself, and the package needs Node.js 22 or newer.

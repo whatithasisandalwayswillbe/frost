@@ -149,7 +149,7 @@ test('weekly sync is bound to location and missing chunks are repaired', async t
   await f.engine.verify(100);
   assert.equal(f.memory.lists, 1);
 
-  // Delete a chunk behind frost's back. Verify notices, and the next backup re-syncs and re-uploads it.
+  // Delete a chunk behind Frost's back. Verify notices, and the next backup re-syncs and re-uploads it.
   const tree = await f.repo.loadTree(first.snapshot.id);
   const id = tree.files.find(v => v.type === 'file')!.chunks![0];
   f.memory.objects.delete(chunkKey(id));

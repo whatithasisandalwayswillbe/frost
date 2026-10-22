@@ -9,5 +9,5 @@
   "configured": false,
   "code": 1,
   "stdout": "",
-  "stderr": "\nerror: choose where to restore: --beside, --to <dir> or --overwrite\n\n"
+  "stderr": "\nerror: specify a restore destination using --beside, --to <dir>, or --overwrite\n\n"
 }

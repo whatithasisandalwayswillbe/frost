@@ -14,14 +14,14 @@ import { reference, setupInput } from './references.js';
 const key = { phrase: () => Array(24).fill('abandon').join(' '), fingerprint: () => 'abcd1234abcd' };
 
 // Setup dependencies with no real storage. Only the Permafrost access key 'good' connects, and a self-hosted
-// server only takes frost's SSH key once it was added by hand.
+// server only takes Frost's SSH key once it was added by hand.
 function deps(): SetupDeps {
   return {
     connect: async (s, _signal, options) => {
       if (s.backend === 'permafrost' && s.permafrost.token !== 'good')
         throw new Error("that access key wasn't accepted");
       if (s.backend === 'sftp' && !options?.acceptNewHostKey)
-        throw new ConnectError('login', "the server didn't accept frost's SSH key");
+        throw new ConnectError('login', "the server didn't accept Frost's SSH key");
       return RepoState.New;
     },
     addKey: async () => {},
@@ -230,7 +230,7 @@ for (const [w, h] of [
     same(perma.view(), name('25-permafrost-get-key'));
   });
 
-// Captures self-hosted storage, from its two questions to both screens for adding frost's SSH key, and the local
+// Captures self-hosted storage, from its two questions to both screens for adding Frost's SSH key, and the local
 // drive question with a path typed in, since its placeholder depends on the system.
 for (const [w, h] of [
   [120, 40],

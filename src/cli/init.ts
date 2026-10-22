@@ -20,7 +20,7 @@ import { printable, tildify } from './format.js';
 
 // The closing line after a successful setup.
 export const setUp = (ctx: Context) =>
-  ctx.fmt.good('frost is set up.') +
+  ctx.fmt.good('Frost is set up.') +
   " Preview your first backup using '" +
   ctx.fmt.bold('frost backup --dry-run') +
   "', or begin the backup with '" +
@@ -159,13 +159,13 @@ async function askStorage(ctx: Context, p: Prompter, cfg: config.Config): Promis
   }
 }
 
-// frost's SSH key isn't on the server yet. ssh can add it after asking for the password, or the person adds
+// Frost's SSH key isn't on the server yet. ssh can add it after asking for the password, or the person adds
 // the line by hand. Returns the connection options for the next try: a key added by hand may come with a
 // server this computer hasn't seen, so its host key is trusted the first time.
 async function addKey(ctx: Context, p: Prompter, s: config.Storage): Promise<{ acceptNewHostKey: boolean }> {
   const f = ctx.fmt;
   const way = await p.choose(
-    "frost's SSH key isn't on " + printable(s.sftp.host) + ' yet.',
+    "Frost's SSH key isn't on " + printable(s.sftp.host) + ' yet.',
     ['Add it for me ' + f.dim('(needs your password once)'), "I'll add it myself"],
     0,
   );
@@ -249,10 +249,10 @@ async function promptKey(
   if (state === RepoState.NeedsPhrase || state === RepoState.LocalWrong) {
     p.gap();
     if (state === RepoState.NeedsPhrase)
-      p.line('Existing frost backups detected in this storage location. Enter the recovery phrase to connect.');
+      p.line('Existing Frost backups detected in this storage location. Enter the recovery phrase to connect.');
     else {
       p.line('This storage location contains backups created with a different key from the one on this machine.');
-      p.line('Enter the recovery phrase for these backups to configure frost to use that key locally.');
+      p.line('Enter the recovery phrase for these backups to configure Frost to use that key locally.');
     }
     return { key: await askPhraseFor(ctx, p, b), newRepo: false };
   }
@@ -267,7 +267,7 @@ async function promptKey(
         `No backups found in ${printable(String(b))}. This machine's active backups are located in ${printable(k.shown ?? '')}.`,
       );
       p.line(
-        'Existing backups will remain untouched, but frost will now only manage snapshots from this location. The initial backup will upload the selected data again.',
+        'Existing backups will remain untouched, but Frost will now only manage snapshots from this location. The initial backup will upload the selected data again.',
       );
       if (!(await p.yesNo('Initialize a separate set of backups at this location?', false)))
         throw new Error(
@@ -304,11 +304,11 @@ export async function runInit(ctx: Context): Promise<void> {
 
   const p = ctx.prompt(),
     f = ctx.fmt;
-  p.open('frost setup');
+  p.open('Frost setup');
   if (existing) p.line(f.dim('Existing config found. Press Enter to retain the current value.'));
   p.gap();
 
-  // Ask for storage until it connects. A self-hosted server that won't take frost's key yet gets the key
+  // Ask for storage until it connects. A self-hosted server that won't take Frost's key yet gets the key
   // added, and is tried again without asking for its settings.
   let connected: { backend: Backend; state: RepoState } | undefined;
   let options: { acceptNewHostKey?: boolean } | undefined;

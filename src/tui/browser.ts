@@ -100,10 +100,10 @@ function relToRoot(p: string, ...roots: string[][]): string {
 function settingsFooter(version: string, w: number): string[] {
   const first = style('dim', 'Change these with ') + style('bold', 'frost config set') + style('dim', ' or');
   const second = style('bold', 'frost config edit');
-  const colophon = version ? style('dim', 'frost ' + version) : '';
+  const colophon = version ? style('dim', 'Frost ' + version) : '';
   const one = first + style('text', ' ') + second;
   if (width(second) + 2 + width(colophon) > w)
-    return [...wrapStyled(one, w), ...(colophon ? para('dim', 'frost ' + version, w).split('\n') : [])];
+    return [...wrapStyled(one, w), ...(colophon ? para('dim', 'Frost ' + version, w).split('\n') : [])];
 
   const right = (left: string) => {
     const gap = w - width(left) - width(colophon);
@@ -1239,7 +1239,7 @@ export class BrowserModel {
     else this.rs.dest = d;
   }
 
-  // Starts the restore. Overwriting needs [y]. For a new folder, frost looks up the restore folder again,
+  // Starts the restore. Overwriting needs [y]. For a new folder, Frost looks up the restore folder again,
   // since the folders there may have changed since the dialog opened, and stops so the user can review a
   // different one. A folder an earlier restore can carry on in counts as well as a free one.
   async confirmRestore(k: string): Promise<void> {

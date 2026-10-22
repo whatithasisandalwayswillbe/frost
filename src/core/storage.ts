@@ -62,7 +62,7 @@ export interface Backend {
   put(key: string, data: Buffer, signal?: AbortSignal): Promise<void>;
   putNew(key: string, data: Buffer, signal?: AbortSignal): Promise<void>;
   get(key: string, signal?: AbortSignal): Promise<Buffer>;
-  // Returns a fresh exclusive buffer that frost may detach or erase after download.
+  // Returns a fresh exclusive buffer that Frost may detach or erase after download.
   getOwned?(key: string, signal?: AbortSignal): Promise<Buffer>;
   list(prefix: string, signal?: AbortSignal): Promise<string[]>;
   delete(key: string, signal?: AbortSignal): Promise<void>;
@@ -131,7 +131,7 @@ export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise
   });
 }
 
-// Object keys frost writes use lowercase letters, digits, `.`, `_`, `-` and `/`, with no empty,
+// Object keys Frost writes use lowercase letters, digits, `.`, `_`, `-` and `/`, with no empty,
 // `.` or `..` segments.
 export function validObjectKey(key: string): boolean {
   return (

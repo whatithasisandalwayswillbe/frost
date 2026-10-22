@@ -22,7 +22,7 @@ const header = (id: string): Snapshot => ({
   stats: emptyStats(),
 });
 
-// The fixture holds every object of a small repository written by an earlier frost, so this
+// The fixture holds every object of a small repository written by an earlier Frost, so this
 // catches any change that breaks reading existing backups.
 test('opens and authenticates a captured repository and its file data', async () => {
   const memory = new Memory();
@@ -168,7 +168,7 @@ test('failed tree uploads never commit snapshot metadata', async () => {
 });
 
 // A plain get may return a buffer the backend keeps, like a cache entry, so the repository must
-// leave it untouched. getOwned hands over a buffer frost may consume, and here it's detached.
+// leave it untouched. getOwned hands over a buffer Frost may consume, and here it's detached.
 test('chunk downloads preserve shared backend buffers and consume explicitly owned buffers', async () => {
   const memory = new Memory();
   const key = Key.fromMaster(Buffer.alloc(32));

@@ -45,7 +45,7 @@ export async function runUpdate(ctx: Context, check: boolean): Promise<void> {
   try {
     exe = await ctx.hooks.selfPath();
   } catch (err) {
-    throw new Error("can't find the frost binary: " + (err as Error).message, { cause: err });
+    throw new Error("can't find the Frost binary: " + (err as Error).message, { cause: err });
   }
 
   // Make sure the install can be replaced before downloading anything.
@@ -58,7 +58,7 @@ export async function runUpdate(ctx: Context, check: boolean): Promise<void> {
     release = await ctx.hooks.latestRelease(ctx.signal);
   } catch (err) {
     if (err === update.errNoRelease) {
-      ctx.fmt.single('frost ' + ctx.version + ctx.fmt.dim(', no releases have been published yet'));
+      ctx.fmt.single('Frost ' + ctx.version + ctx.fmt.dim(', no releases have been published yet'));
       return;
     }
     throw err;
@@ -69,7 +69,7 @@ export async function runUpdate(ctx: Context, check: boolean): Promise<void> {
 
   try {
     if (!update.newer(release.version, ctx.version)) {
-      ctx.fmt.single('frost ' + ctx.version + ctx.fmt.dim(' is the latest release'));
+      ctx.fmt.single('Frost ' + ctx.version + ctx.fmt.dim(' is the latest release'));
       return;
     }
     const b = ctx.fmt.block();
@@ -88,7 +88,7 @@ export async function runUpdate(ctx: Context, check: boolean): Promise<void> {
     state.installed_at = new Date().toISOString();
     b.row('installed', ctx.fmt.good('ok ') + printable(tildify(exe)));
     b.gap();
-    b.close(ctx.fmt.good('Updated') + ' to frost ' + ctx.fmt.bold(release.version));
+    b.close(ctx.fmt.good('Updated') + ' to Frost ' + ctx.fmt.bold(release.version));
   } finally {
     // Under sudo the state isn't saved, so the user's cache doesn't get a file owned by root.
     if (!(process.geteuid?.() === 0 && process.env.SUDO_UID)) await update.saveState(file, state).catch(() => {});
@@ -127,7 +127,7 @@ export async function autoUpdate(ctx: Context): Promise<void> {
     state.latest = release.version;
     if (!update.newer(release.version, ctx.version)) return;
     if (!cfg.update.auto) {
-      log('frost ' + release.version + ' is available, run `frost update` to install it');
+      log('Frost ' + release.version + ' is available, run `frost update` to install it');
       return;
     }
 
@@ -141,7 +141,7 @@ export async function autoUpdate(ctx: Context): Promise<void> {
     state.installed = release.version;
     state.from = ctx.version;
     state.installed_at = new Date().toISOString();
-    log('updated frost from ' + ctx.version + ' to ' + release.version);
+    log('updated Frost from ' + ctx.version + ' to ' + release.version);
   } finally {
     await update.saveState(file, state).catch(() => {});
   }

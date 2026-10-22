@@ -1,6 +1,6 @@
 # Permafrost
 
-Permafrost is a hosted storage service for frost. It's a plain object store with four object operations and a usage report. Backup objects are encrypted before upload, the same as with S3. Setup also writes and deletes a small plaintext connectivity probe.
+Permafrost is a hosted storage service for Frost. It's a plain object store with four object operations and a usage report. Backup objects are encrypted before upload, the same as with S3. Setup also writes and deletes a small plaintext connectivity probe.
 
 This document is the contract. `PermafrostBackend` in `src/core/storage.ts` implements it. Its tests in `test/core/storage.test.ts` run against a loopback reference server built from this document. Anyone can run a compatible server.
 
@@ -46,9 +46,9 @@ A server with a storage limit refuses an upload that would take the account past
 
 The server must recheck access and the current storage limit before committing an upload. A key revoked, account closed or storage limit changed while an upload was in flight must not bypass those checks. An expired upload reservation fails with `503 unavailable` and leaves no indexed object.
 
-frost uses conditional writes for `frost.repo`, snapshot headers and trees, so they're required. Servers must enforce them atomically, including for requests from different clients. A conditional request must never overwrite an existing object.
+Frost uses conditional writes for `frost.repo`, snapshot headers and trees, so they're required. Servers must enforce them atomically, including for requests from different clients. A conditional request must never overwrite an existing object.
 
-The maximum object size is 16 MiB. frost chunks, including the ones holding snapshot file lists, are at most 8 MiB before encryption, and everything else it stores is small.
+The maximum object size is 16 MiB. Frost chunks, including the ones holding snapshot file lists, are at most 8 MiB before encryption, and everything else it stores is small.
 
 ### `GET /v1/objects/{key}`
 
@@ -56,7 +56,7 @@ Returns the object body.
 
 Responses: `200` with the body and an `X-Content-SHA256` header, `404 not_found`.
 
-Clients should check the body against `X-Content-SHA256`. frost does, and it also authenticates every object with its own key after download.
+Clients should check the body against `X-Content-SHA256`. Frost does, and it also authenticates every object with its own key after download.
 
 ### `DELETE /v1/objects/{key}`
 
@@ -77,7 +77,7 @@ Lists the keys that start with `prefix`, which may be empty. Results come in pag
 
 Pass `next_cursor` back as `cursor` to get the next page. An empty or missing `next_cursor` means this was the last page.
 
-Cursor values must not repeat within a listing. frost rejects cursor cycles.
+Cursor values must not repeat within a listing. Frost rejects cursor cycles.
 
 Responses: `200`.
 
@@ -101,13 +101,13 @@ Reports how much the account stores and may store.
 | `read_only` | `true` when uploads are refused with `403 read_only` |
 | `message` | Text for the person when something needs their attention, such as an account that's nearly full or can't take uploads. Empty otherwise |
 
-frost shows `used_bytes` and `quota_bytes` in `frost status`. When `message` isn't empty, `frost status` and `frost backup` show it as a warning, as it is. Like the error messages below, it starts lowercase and has no closing full stop.
+Frost shows `used_bytes` and `quota_bytes` in `frost status`. When `message` isn't empty, `frost status` and `frost backup` show it as a warning, as it is. Like the error messages below, it starts lowercase and has no closing full stop.
 
-Responses: `200`. A server without this endpoint answers `404`, and frost shows nothing.
+Responses: `200`. A server without this endpoint answers `404`, and Frost shows nothing.
 
 ## Getting a key
 
-Each server hands out keys its own way. frost only needs the key.
+Each server hands out keys its own way. Frost only needs the key.
 
 For the default server, people get a key at [getfro.st/perma](https://getfro.st/perma), copy it and paste it into `frost init`. When the default server is chosen and there's no key yet, setup opens that page in the browser. With a custom server, setup just asks for the key.
 
@@ -133,7 +133,7 @@ Every non-2xx response has this body:
 | 500, 502, 503, 504 | `unavailable` | Try again, after `Retry-After` if it's set |
 | 507 | `quota_exceeded` | The upload would take the account past its limit. `message` gives the numbers |
 
-frost shows `message` with the error, so write it for the person reading it.
+Frost shows `message` with the error, so write it for the person reading it.
 
 For `401`, the client preserves the server's reason and adds access-key guidance. The CLI starts with "the Permafrost access key was rejected" and directs the person to `frost init`. Setup starts with "Permafrost rejected the access key." If the server supplies no reason, the client says the key may be invalid or expired. This wording does not change the API response or its `message` field.
 

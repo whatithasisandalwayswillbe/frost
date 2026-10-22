@@ -13,7 +13,7 @@ The changes most likely to be accepted are:
 - Tests for behaviour that isn't covered yet
 - Documentation fixes
 
-Some changes need agreement in an issue before you write any code: anything that touches encryption, the storage format or dependencies, a new command or storage backend, and any change to how the TUI looks. frost keeps a small, fixed set of commands, so a new feature usually belongs as a flag or an action on an existing one.
+Some changes need agreement in an issue before you write any code: anything that touches encryption, the storage format or dependencies, a new command or storage backend, and any change to how the TUI looks. Frost keeps a small, fixed set of commands, so a new feature usually belongs as a flag or an action on an existing one.
 
 If you're not sure a change fits, ask in an issue, or pick one labelled [`help wanted`](https://github.com/whatithasisandalwayswillbe/frost/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22), [`good first issue`](https://github.com/whatithasisandalwayswillbe/frost/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22) or [`bug`](https://github.com/whatithasisandalwayswillbe/frost/issues?q=is%3Aissue%20state%3Aopen%20label%3Abug). To take on an issue, leave a comment on it, and a maintainer will assign it to you unless someone's already working on it.
 
@@ -44,7 +44,6 @@ Clone the repository with `git clone https://github.com/whatithasisandalwayswill
 - Keep runtime and dependency versions pinned. Native filesystem operations fail closed; don't add a path-based fallback.
 - A change to what a package contains, or to the runtime it ships, must still pass `validatePackage` as installed copies run it. [ARCHITECTURE.md](ARCHITECTURE.md#packaging-and-updates) has the details.
 - Keep docs, help text, output and comments short and plain, with no em dashes.
-- "frost" is always lowercase, even at the start of a sentence.
 
 ## Before you open a pull request
 
@@ -90,7 +89,7 @@ The title becomes the commit message when the pull request is squash merged. Mak
 
 ## Issues
 
-Before opening an issue, check the docs at [getfro.st/help](https://getfro.st/help) and the existing issues. A bug report needs your frost version (`frost --version`), your OS, the kind of storage you use (with the server, NAS or provider), the command you ran and what it printed. Leave out your recovery phrase and storage credentials. `frost config` masks credentials unless you ask it not to.
+Before opening an issue, check the docs at [getfro.st/help](https://getfro.st/help) and the existing issues. A bug report needs your Frost version (`frost --version`), your OS, the kind of storage you use (with the server, NAS or provider), the command you ran and what it printed. Leave out your recovery phrase and storage credentials. `frost config` masks credentials unless you ask it not to.
 
 ## Storage
 

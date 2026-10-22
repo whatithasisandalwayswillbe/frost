@@ -480,12 +480,12 @@ test('package validation accepts scripts, data and sounds and refuses native cod
   assert.throws(() => validatePackage(entries, 'v1.2.3', packageTarget), /unexpected package path/);
 });
 
-// A release the installed frost can't read says how to get past it, and nothing is replaced.
+// A release the installed Frost can't read says how to get past it, and nothing is replaced.
 test('a release with a runtime below the floor says to reinstall and changes nothing', async t => {
   const f = await fixture(t, undefined, 'v25.0.0');
   await assert.rejects(
     installRelease(await latest(f.options), f.root, f.options),
-    /package manifest mismatch\. This frost installation may not support the v1\.2\.3 package format\. Reinstall frost: https:\/\/github\.com\/whatithasisandalwayswillbe\/frost#install/,
+    /package manifest mismatch\. This Frost installation may not support the v1\.2\.3 package format\. Reinstall Frost: https:\/\/github\.com\/whatithasisandalwayswillbe\/frost#install/,
   );
   assert.equal(JSON.parse(await readFile(path.join(f.root, 'current.json'), 'utf8')).version, 'v1.0.0');
   assert.equal(await readFile(path.join(f.root, 'runtime/bin/node'), 'utf8'), 'old runtime');

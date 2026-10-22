@@ -14,7 +14,6 @@ import type { ColorProfile } from '../../src/cli/terminal.js';
 import { defaultConfig } from '../../src/core/config.js';
 import { shorten, short, emptyStats, type Snapshot } from '../../src/core/snapshot.js';
 import { Engine, type BackupResult } from '../../src/engine/index.js';
-import { copyCLI } from '../copy.js';
 
 // One recorded layout. The name picks a scenario in the last test, and profile picks the colour profile.
 interface Reference {
@@ -186,7 +185,7 @@ test(
               id: 'maple-absurd-3f1c' + i.toString(16).padStart(7, '0'),
               time: new Date(Date.parse(stamp) - i * 3600_000).toISOString(),
             });
-          b.open('frost', 'dev  memory');
+          b.open('Frost', 'dev  memory');
           b.gap();
           printSnapshots(b, snaps, shorten(snaps), all === 'true');
         } else if (name === 'phrase-grid') {
@@ -262,11 +261,7 @@ test(
         // Ages depend on today's date, so they're replaced before comparing. Every mismatch is collected, so one
         // run reports them all.
         try {
-          assert.equal(
-            output.replace(/\d+d ago/g, '<age> ago'),
-            copyCLI(record.output),
-            record.profile + ' ' + record.name,
-          );
+          assert.equal(output.replace(/\d+d ago/g, '<age> ago'), record.output, record.profile + ' ' + record.name);
         } catch (error) {
           differences.push((error as Error).message);
         }

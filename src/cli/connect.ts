@@ -1,4 +1,4 @@
-// Connecting to storage during setup. It checks the storage behaves the way frost needs, finds out whether
+// Connecting to storage during setup. It checks the storage behaves the way Frost needs, finds out whether
 // it already holds backups, and turns storage errors into advice.
 
 import { randomBytes } from 'node:crypto';
@@ -57,7 +57,7 @@ const noClient =
     ? 'OpenSSH client is required but not installed. Enable it under Settings > System > Optional features.'
     : 'The OpenSSH client is required but not installed. Install it using your package manager (typically `openssh-client`).';
 
-// Advice for a self-hosted server's SSH problems. A server that refuses frost's key, or one this computer hasn't
+// Advice for a self-hosted server's SSH problems. A server that refuses Frost's key, or one this computer hasn't
 // seen yet, becomes ConnectError('login'), which setup answers by offering to add the key.
 function explainSSH(err: SSHError): Error {
   if (err.problem === 'login' || err.problem === 'unknownhost') return new ConnectError('login', sentence(err.message));
@@ -166,7 +166,7 @@ export function explainConnect(error: unknown): Error {
 }
 
 // Checks the storage can create, read, list and delete an object, and that creating it a second time
-// fails. frost relies on that conditional write to keep machines from overwriting each other's metadata.
+// fails. Frost relies on that conditional write to keep machines from overwriting each other's metadata.
 // The test object is deleted afterwards, even when a check fails.
 export async function probe(backend: Backend, signal?: AbortSignal): Promise<void> {
   const key = 'frost.probe-' + randomBytes(16).toString('hex');
@@ -206,7 +206,7 @@ export async function probe(backend: Backend, signal?: AbortSignal): Promise<voi
 
 // Probes the storage and works out what's there. With a key on this machine, it says whether that key opens
 // the backups. Without one, it only says whether there are backups. Gives up after 45 seconds. A self-hosted
-// server gets frost's SSH key made first, and storage with a folder gets the folder's last part created.
+// server gets Frost's SSH key made first, and storage with a folder gets the folder's last part created.
 // acceptNewHostKey trusts a server's SSH host key the first time this computer sees it.
 export async function connect(
   ctx: Context,
@@ -249,16 +249,16 @@ export async function opensRepo(ctx: Context, b: Backend, key: Key, parentSignal
   }
 }
 
-// Where frost's public SSH key is, as setup shows it.
+// Where Frost's public SSH key is, as setup shows it.
 export const keyFileShown = () => tildify(config.sshKeyPath() + '.pub');
 
-// Adds frost's SSH key to a self-hosted server. ssh runs in the terminal and asks for the password there.
+// Adds Frost's SSH key to a self-hosted server. ssh runs in the terminal and asks for the password there.
 export async function installKey(ctx: Context, s: Storage): Promise<void> {
   new SFTPBackend(s.sftp, { identity: config.sshKeyPath() });
   const line = authorizedLine(await ctx.hooks.sshKey());
   ctx.fmt.write(
     '\n' +
-      ctx.fmt.dim("Adding frost's SSH key to ") +
+      ctx.fmt.dim("Adding Frost's SSH key to ") +
       printable(s.sftp.host) +
       ctx.fmt.dim('. SSH handles authentication directly, so your password is never seen or stored.') +
       '\n\n',

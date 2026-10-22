@@ -6,6 +6,6 @@
   "input": "",
   "configured": false,
   "code": 0,
-  "stdout": "frost version dev\n",
+  "stdout": "Frost version dev\n",
   "stderr": ""
 }

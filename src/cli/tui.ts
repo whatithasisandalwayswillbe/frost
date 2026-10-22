@@ -103,7 +103,7 @@ export async function runSetup(ctx: Context, cfg: config.Config, existing: boole
     return;
   }
   const b = ctx.fmt.block();
-  b.open('frost setup');
+  b.open('Frost setup');
   b.gap();
   result.rows.forEach(([label, value]) => b.row(label, value));
   b.gap();

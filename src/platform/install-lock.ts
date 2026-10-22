@@ -11,7 +11,7 @@ import {
   type RootFile,
 } from './fs-root.js';
 
-export const errBusy = new Error('another frost update is already running');
+export const errBusy = new Error('another Frost update is already running');
 
 // Opens (and optionally creates) the installation folder as a retained handle. Windows refuses
 // any link on the way. On POSIX every component, not only links, must pass the trusted ancestor

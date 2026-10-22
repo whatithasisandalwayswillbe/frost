@@ -1,5 +1,5 @@
 // Checks a change of storage settings before it's saved, so a wrong setting doesn't quietly start a separate
-// set of backups or lose track of the old ones. A change made to config.toml outside frost gets the same
+// set of backups or lose track of the old ones. A change made to config.toml outside Frost gets the same
 // checks the first time a command uses it.
 
 import type { Storage } from '../core/config.js';
@@ -17,7 +17,7 @@ async function hasObjects(b: Backend, signal?: AbortSignal): Promise<boolean> {
 }
 
 // `config set` refuses a change with a problem. `config edit` only warns about one, and so does `notice`, for
-// a change already made outside frost. `notice` stays quiet when the new storage can't be opened, because
+// a change already made outside Frost. `notice` stays quiet when the new storage can't be opened, because
 // opening it explains why. Returns false when there was no way to finish the check.
 export async function checkStorageChange(
   ctx: Context,

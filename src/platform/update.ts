@@ -15,11 +15,11 @@ export { releaseKey } from './signature.js';
 export const repo = 'whatithasisandalwayswillbe/frost';
 export const baseURL = 'https://github.com/' + repo + '/releases';
 export const errDevBuild = new Error(
-  'this frost build comes from source and cannot update itself. Rebuild from source or reinstall via the official package: https://github.com/' +
+  'this Frost build comes from source and cannot update itself. Rebuild from source or reinstall via the official package: https://github.com/' +
     repo +
     '#install',
 );
-export const errNoRelease = new Error('no frost release has been published yet');
+export const errNoRelease = new Error('no Frost release has been published yet');
 
 // Release tags are vX.Y.Z with an optional pre-release suffix and no build metadata.
 const versionRe = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$/;
@@ -236,7 +236,7 @@ export const executable = () => path.resolve(process.env.FROST_APP_ROOT || insta
 // writable by creating and removing a probe file.
 export async function canReplace(root: string): Promise<void> {
   const pm = managed(root);
-  if (pm) throw new Error(`${root} was installed via ${pm}; use that package manager to update frost`);
+  if (pm) throw new Error(`${root} was installed via ${pm}; use that package manager to update Frost`);
   const directory = await installationDirectory(root, true);
   const probe = '.frost-update-probe-' + randomUUID();
   try {
@@ -293,7 +293,7 @@ interface PackageManifest {
   arch: string;
 }
 
-// The oldest runtime frost runs on is Node 26.10, which added the native-call API its filesystem
+// The oldest runtime Frost runs on is Node 26.10, which added the native-call API its filesystem
 // bindings use. A later release may ship a newer runtime, so this sets a floor and no ceiling.
 const runtimeRe = /^v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$/;
 export function supportedRuntime(version: string): boolean {
@@ -311,7 +311,7 @@ const packageFiles = /\.(js|mjs|json|txt|md|wav|ogg|mp3)$/;
 // target, the runtime must match its recorded hash, and every other file must be a known
 // top-level file or plain script, data or sound under versions/<version>/. Native code is refused.
 //
-// An installed frost runs this on every later release, so a rule added here can only be relied
+// An installed Frost runs this on every later release, so a rule added here can only be relied
 // on once the installs that predate it are gone. Loosen rules before any release needs them.
 export function validatePackage(
   entries: ArchiveEntry[],
@@ -334,7 +334,7 @@ export function validatePackage(
   if (!runtime || createHash('sha256').update(runtime.data).digest('hex') !== m.nodeSha256)
     throw new Error('runtime checksum mismatch');
   if (!entries.some(e => e.name === `versions/${version}/src/cli/main.js`))
-    throw new Error('frost scripts not found in the archive');
+    throw new Error('Frost scripts not found in the archive');
 
   for (const entry of entries) {
     if (
@@ -470,13 +470,13 @@ export async function installRelease(
     if (!timingSafeEqual(sum, rel.sum)) throw new Error(`${rel.archive} failed checksum verification; update aborted`);
     const entries = extractArchive(rel.archive, archive);
     const target = options.platform ?? (await platform(options.runner));
-    // A release this frost can't read is signed and fine, so say how to get past it.
+    // A release this Frost can't read is signed and fine, so say how to get past it.
     let manifest: PackageManifest;
     try {
       manifest = validatePackage(entries, rel.version, target);
     } catch (e) {
       throw new Error(
-        `${(e as Error).message}. This frost installation may not support the ${rel.version} package format. Reinstall frost: https://github.com/${repo}#install`,
+        `${(e as Error).message}. This Frost installation may not support the ${rel.version} package format. Reinstall Frost: https://github.com/${repo}#install`,
         { cause: e },
       );
     }

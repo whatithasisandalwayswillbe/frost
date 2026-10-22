@@ -1,4 +1,4 @@
-// BIP39 mnemonic encoding. frost shows its 256-bit master key as a 24-word recovery phrase
+// BIP39 mnemonic encoding. Frost shows its 256-bit master key as a 24-word recovery phrase
 // built from the English wordlist in assets/.
 
 import { createHash } from 'node:crypto';
