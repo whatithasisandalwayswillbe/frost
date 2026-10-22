@@ -330,7 +330,7 @@ export const providers: Provider[] = [
       {
         question: 'What is the server SSH address?',
         placeholder: 'like me@nas.local',
-        help: 'A user and host, or a Host from your SSH config. Append a port number, such as :2222, to use a custom port.',
+        help: 'Enter an SSH address like me@nas.local. For a custom port, use me@nas.local:2222. You can also use a name from your SSH config.',
         name: 'address',
         about: 'address',
         check: checkAddress,
@@ -338,7 +338,7 @@ export const providers: Provider[] = [
       {
         question: 'Which folder on the server?',
         value: 'frost',
-        help: 'In your home folder there, or a full path like /srv/backups/frost. frost creates the last folder.',
+        help: 'Use a folder in your home directory, or enter a full path. frost creates the backup folder if needed. The folder containing it must already exist.',
         name: 'folder',
         about: 'folder',
         check: checkFolder,
@@ -359,7 +359,7 @@ export const providers: Provider[] = [
       {
         question: 'Which folder should store your backups?',
         placeholder: 'like ' + drivePath,
-        help: "On a drive that's connected now. frost will automatically create the final folder in the path if it does not exist.",
+        help: "On a drive that's currently connected.",
         name: 'folder',
         about: 'folder',
         check: checkDrivePath,

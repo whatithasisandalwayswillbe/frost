@@ -259,7 +259,7 @@ test('files only in iCloud are skipped with a warning that names them', async t 
   assert.equal(
     result.snapshot.warnings![0],
     process.platform === 'darwin'
-      ? remote + " is only in iCloud, so frost didn't download it"
+      ? remote + ' resides in iCloud storage only and was not downloaded.'
       : 'Unknown system error -11: Unknown system error -11, read',
   );
 

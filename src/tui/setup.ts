@@ -962,7 +962,7 @@ export class SetupModel {
         return {
           over: providers[selfHosted].name,
           question: `Add frost's SSH key to ${this.pending.sftp.host}.`,
-          sub: 'frost authenticates using SSH keys; scheduled backups run without requiring passwords.',
+          sub: "Authenticate with frost's SSH key so scheduled backups run seamlessly without password prompts.",
           body: [
             choice(this.keyCur === 0, 'Add it for me', 'needs your password once', 21, cw),
             choice(this.keyCur === 1, "I'll add it myself", 'shows where the key is', 21, cw),
@@ -975,7 +975,12 @@ export class SetupModel {
           question: "Add frost's key to the server.",
           sub: `Append the key in this file to ~/.ssh/authorized_keys on ${this.pending.sftp.host}, then press [enter].`,
           body: [inputBox({ value: this.deps.keyFile?.() ?? '' }, false, false, cw)],
-          help: 'Refer to ' + projectLink + '/help/storage/self-hosted for instructions.',
+          extra: wrapStyled(
+            style('dim', 'Refer to ') +
+              style('link', projectLink + '/help/storage/self-hosted') +
+              style('dim', ' for instructions.'),
+            cw,
+          ).map(line => style('dim', line)),
         };
 
       case 'details': {
@@ -994,10 +999,10 @@ export class SetupModel {
                   this.permaCur
                     ? style('text', 'Obtain an access key at ') +
                         style('bold', permafrostKeyPage.replace('https://', '')) +
-                        style('text', ', then paste it below.')
+                        style('text', ', then paste it above.')
                     : style('text', 'No key yet? Press ') + style('bold', '[esc]') + style('text', ' to get one.'),
                   cw,
-                ),
+                ).map(line => style('text', line)),
               }
             : {}),
         };
@@ -1030,7 +1035,7 @@ export class SetupModel {
       case 'schedule':
         return {
           question: 'Select how often frost should back up:',
-          sub: 'Backups run automatically in the background. Incremental backups upload only new data.',
+          sub: 'Backups run automatically in the background.',
           body: this.schedOptions().map((o, i) => choice(i === this.schedCur, schedLabel(o), '', 40, cw)),
           foot: "Backup schedules can be changed using 'frost init'.",
         };
@@ -1048,7 +1053,7 @@ export class SetupModel {
           over: `Confirm you've saved your phrase (${this.check.focus + 1} of 2)`,
           question: this.check.fields[this.check.focus].question ?? '',
           body: [inputBox(this.check.fields[this.check.focus], false, true, cw)],
-          help: 'Enter the requested word using your written notes.',
+          help: 'Type it from what you wrote down.',
         };
 
       case 'unlock':
@@ -1101,9 +1106,9 @@ export class SetupModel {
         if (this.newRepo && this.elsewhere) {
           const warning = para(
             'caution',
-            'This creates a separate set of backups. Existing backups in ' +
+            'This creates a separate backup target. Existing backups in ' +
               this.elsewhere +
-              ' remain intact, but frost will now manage snapshots from this location. The initial backup uploads the selected data again.',
+              ' remain intact, but focus switches to new targets; the initial backup re-transfers all selected files.',
             cw,
           );
           let used =
@@ -1151,8 +1156,8 @@ export class SetupModel {
       sub: 'Whole folders, with everything inside them.',
       body: rows,
       help: items.length
-        ? 'Enter a directory path and press [enter]. Leave blank and press [enter] to continue.'
-        : 'Enter a directory path and press [enter] to add. Add as many directories as needed.',
+        ? 'Add another directory, or leave blank to continue.'
+        : 'Enter a directory path and continue. Add as many directories as needed.',
       foot: missing
         ? 'Unavailable source directories will be skipped until they become available (e.g. disconnected external drives).'
         : '',
@@ -1287,7 +1292,7 @@ export class SetupModel {
         fill(w, 2),
         row(style('text', 'learn more at ') + style('link', projectLink)),
         blank(w),
-        center('dim', 'Setup completion takes approximately two minutes.'),
+        center('dim', 'Setup takes about two minutes.'),
       );
     }
 

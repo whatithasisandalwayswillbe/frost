@@ -327,7 +327,10 @@ export function restoreContent(m: BrowserModel): string {
   } else if (rs.phase === 'picking') {
     lines.push(line(style('bold', 'Choose a folder')), fill(w));
     paragraph('text', 'Select a restore location in the newly opened window.');
-    paragraph('dim', 'frost will create a new directory named ' + restoreFolderName(rs.snap!.id) + ' inside it.');
+    paragraph(
+      'dim',
+      'A new directory named ' + restoreFolderName(rs.snap!.id) + ' will be created inside it automatically.',
+    );
   } else if (rs.phase === 'ready') {
     paragraph('bold', restoreTitle(rs));
     paragraph('dim', 'into a new folder, so nothing already there is touched');
@@ -346,7 +349,10 @@ export function restoreContent(m: BrowserModel): string {
     lines.push(line(row));
   } else if (rs.phase === 'typing') {
     lines.push(line(style('bold', 'Type a folder')));
-    paragraph('dim', 'frost will create a new directory named ' + restoreFolderName(rs.snap!.id) + ' inside it.');
+    paragraph(
+      'dim',
+      'A new directory named ' + restoreFolderName(rs.snap!.id) + ' will be created inside it automatically.',
+    );
     lines.push(fill(w), inputBox(rs.input.fields[0], false, true, w));
     if (rs.inputErr) paragraph('error', rs.inputErr);
   } else if (rs.phase === 'running') {
@@ -396,7 +402,7 @@ export function restoreContent(m: BrowserModel): string {
         to,
         fill(w),
       );
-      paragraph('dim', 'All data chunks were successfully decrypted and validated against cryptographic hashes.');
+      paragraph('dim', 'All data was successfully decrypted and verified.');
     }
   }
 

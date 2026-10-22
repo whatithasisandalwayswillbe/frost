@@ -54,8 +54,8 @@ export function permafrostLookupFailed(error: unknown): boolean {
 // What to do without an SSH client. Windows has one as an optional feature, and other systems as a package.
 const noClient =
   process.platform === 'win32'
-    ? 'frost requires the OpenSSH client, which is not installed. Enable it under Settings > System > Optional features.'
-    : 'frost requires the OpenSSH client (ssh), which is not installed. Install it using your package manager (typically openssh-client).';
+    ? 'OpenSSH client is required but not installed. Enable it under Settings > System > Optional features.'
+    : 'The OpenSSH client is required but not installed. Install it using your package manager (typically `openssh-client`).';
 
 // Advice for a self-hosted server's SSH problems. A server that refuses frost's key, or one this computer hasn't
 // seen yet, becomes ConnectError('login'), which setup answers by offering to add the key.
@@ -97,16 +97,16 @@ export function explainConnect(error: unknown): Error {
   if (/goes through a link|is a link in an untrusted folder/.test(err.message ?? ''))
     return new ConnectError(
       'folder',
-      'frost does not follow symbolic links or directory junctions for backup folders. Specify a real path without links or junctions.',
+      'Symbolic links and directory junctions are not supported for backup folders. Please specify the absolute path.',
     );
   if (err.code === 'EACCES' || err.code === 'EPERM')
-    return new ConnectError('folder', 'frost cannot write to that folder. Check directory permissions.');
+    return new ConnectError('folder', 'Unable to write to that folder. Please check directory permissions.');
   if (err.code === 'EROFS') return new ConnectError('folder', 'That drive is read-only.');
   if (err.code === 'ENOSPC') return new Error('the drive is full');
 
   if (err === errConditionalUnsupported)
     return new Error(
-      'This storage provider does not support conditional writes (If-None-Match: *). frost requires this feature to prevent conflicting updates to backup metadata across multiple machines. Choose storage that supports conditional writes.',
+      'This storage provider does not support conditional writes (If-None-Match: *). This feature is required to prevent conflicting updates to backup metadata across multiple machines. Please select a supported storage provider.',
     );
 
   // Permafrost's own message says why it refused, when it sent one.
@@ -260,7 +260,7 @@ export async function installKey(ctx: Context, s: Storage): Promise<void> {
     '\n' +
       ctx.fmt.dim("Adding frost's SSH key to ") +
       printable(s.sftp.host) +
-      ctx.fmt.dim('. SSH handles authentication directly; frost never sees or stores your password.') +
+      ctx.fmt.dim('. SSH handles authentication directly, so your password is never seen or stored.') +
       '\n\n',
   );
   await ctx.hooks.sshInstall(s.sftp.host, s.sftp.port, line);

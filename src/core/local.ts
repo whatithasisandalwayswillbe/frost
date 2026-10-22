@@ -93,7 +93,7 @@ export class LocalBackend implements Backend {
       return new MissingRootError(`${error.message} not found. Connect the required drive and try again`);
     if (error.kind === 'unsupported')
       return new UnsafeFolderError(
-        `${this.#root} resides on a filesystem that cannot safely create backup metadata. frost requires atomic file creation without replacing existing files to prevent conflicting updates across machines. Choose a filesystem that supports this, such as NTFS, APFS, ext4, Btrfs, or XFS`,
+        `${this.#root} resides on an unsupported filesystem. Atomic file creation is required to prevent multi-host backup corruption. Please choose a storage path formatted as NTFS, APFS, ext4, Btrfs, or XFS.`,
       );
     return Object.assign(new Error(error.message), error.code ? { code: error.code } : {});
   }

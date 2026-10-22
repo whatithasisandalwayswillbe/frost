@@ -128,7 +128,7 @@ export async function checkStorageChange(
     out.warn(
       'These backups differ from the ones in ' +
         printable(known.shown ?? '') +
-        '. frost will switch focus to display these snapshots; previous backups remain unaffected.',
+        '. The display focus will now switch to these snapshots; previous backups remain unaffected.',
     );
   return true;
 }

@@ -275,7 +275,7 @@ export async function restore(
       if (destinations.has(rel)) throw new Error(`duplicate restore destination ${JSON.stringify(f.path)}`);
       if (opts.newTarget && rel.toLowerCase() === marker)
         throw new Error(
-          `cannot restore ${JSON.stringify(f.path)} into a new folder: this name is reserved for frost's restore state`,
+          `unable to restore \`${JSON.stringify(f.path)}\` into a new folder due to a name collision with internal repository structures.`,
         );
       if (!['file', 'dir', 'symlink'].includes(f.type)) throw new Error(`unknown file type ${JSON.stringify(f.type)}`);
       if ((f.size ?? 0) < 0 || !Number.isSafeInteger(f.size ?? 0))

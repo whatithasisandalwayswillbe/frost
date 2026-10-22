@@ -457,7 +457,8 @@ export async function addPath(raw: string, paths: string[]): Promise<{ path: str
   const full = expand(clean);
   if (!path.isAbsolute(full)) throw new Error('provide an absolute path (e.g., ~/Documents)');
   try {
-    if (!(await stat(full)).isDirectory()) throw new Error('path is a file; frost backs up entire directories');
+    if (!(await stat(full)).isDirectory())
+      throw new Error('specified path is a file; only entire directories can be backed up.');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }

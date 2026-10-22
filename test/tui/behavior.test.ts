@@ -769,6 +769,41 @@ test('setup adds frost SSH key to a self-hosted server for you or by hand', asyn
   await m.onKey('enter');
   assert.equal(m.step, 'keyManual');
   assert.match(strip(m.view()), /~\/\.config\/frost\/ssh\/frost_ed25519\.pub/);
+  for (const [w, h] of [
+    [56, 20],
+    [60, 24],
+    [64, 24],
+    [80, 24],
+    [120, 40],
+  ]) {
+    m.resize(w, h);
+    const frame = m.view();
+    assert.equal(width(frame), w);
+    assert.equal(height(frame), h);
+    const grid = cells(frame);
+    for (const row of grid) for (const cell of row) assert.ok(cell.background);
+    const link = 'getfro.st/help/storage/self-hosted';
+    const row = grid.find(row =>
+      row
+        .map(cell => cell.text)
+        .join('')
+        .includes(link),
+    )!;
+    assert.ok(row);
+    const start = row
+      .map(cell => cell.text)
+      .join('')
+      .indexOf(link);
+    for (const cell of row.slice(start, start + link.length)) {
+      assert.equal(cell.foreground, '242,239,231');
+      assert.equal(cell.bold, true);
+      assert.equal(cell.underline, true);
+    }
+    assert.match(
+      strip(frame).replace(/\s+/g, ' '),
+      /Refer to getfro\.st\/help\/storage\/self-hosted for instructions\./,
+    );
+  }
   await m.onKey('o');
   assert.equal(byHand.state.revealed, '~/.config/frost/ssh/frost_ed25519.pub');
   await m.onKey('enter');
@@ -882,10 +917,34 @@ test('setup opens the key page for a new Permafrost key and asks for it', async 
   await m.onKey('enter');
   assert.deepEqual(opened, ['https://getfro.st/perma']);
   assert.equal(m.step, 'details');
-  assert.match(
-    strip(m.view()).replace(/\s+/g, ' '),
-    /Obtain an access key at getfro\.st\/perma, then paste it below\./,
-  );
+  for (const [w, h] of [
+    [56, 18],
+    [60, 24],
+    [64, 24],
+    [80, 24],
+    [120, 40],
+  ]) {
+    m.resize(w, h);
+    const frame = m.view();
+    assert.equal(width(frame), w);
+    assert.equal(height(frame), h);
+    const grid = cells(frame);
+    // Wrapped instructions need their own colors after the layout pads and resets each row.
+    for (const row of grid) for (const cell of row) assert.ok(cell.background, `${w}x${h} ${cell.text}`);
+    assert.match(strip(frame).replace(/\s+/g, ' '), /Obtain an access key at getfro\.st\/perma, then paste it above\./);
+    const hint = grid.find(row =>
+      row
+        .map(cell => cell.text)
+        .join('')
+        .includes('getfro.st/perma'),
+    )!;
+    const start = hint
+      .map(cell => cell.text)
+      .join('')
+      .indexOf('getfro.st/perma');
+    assert.ok(start >= 0);
+    for (const cell of hint.slice(start, start + 'getfro.st/perma'.length)) assert.equal(cell.bold, true);
+  }
 
   await m.onKey('esc');
   assert.equal(m.step, 'permaChoice');

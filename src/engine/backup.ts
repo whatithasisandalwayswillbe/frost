@@ -358,8 +358,8 @@ export async function backup(e: EngineLike, opts: BackupOptions, signal?: AbortS
   const unreadable = (p: string, err: unknown, named = true) =>
     icloud(err)
       ? named
-        ? p + ' resides in iCloud storage only; frost did not download it'
-        : 'file is stored only in iCloud; frost did not download it'
+        ? p + ' resides in iCloud storage only and was not downloaded.'
+        : 'file resides in iCloud storage only and was not downloaded.'
       : message(err);
 
   // `retry` holds files that changed while they were read.
