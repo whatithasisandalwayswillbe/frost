@@ -74,8 +74,6 @@ if [ "$version" = latest ]; then
   version="$(awk '$1 == "##" && $2 ~ /^v[0-9]/ { print $2; exit }' docs/CHANGELOG.md)"
 fi
 [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || die 'Invalid release version'
-# The installer and updater take GitHub's latest release, so the flag decides who gets it. A suffix keeps the two
-# agreeing, and a pre-release never uses up a stable version.
 case "$mode" in
   --release) [[ "$version" != *-* ]] || die "$version has a suffix, so publish it with --pre-release" ;;
   --pre-release) [[ "$version" == *-* ]] || die "--pre-release needs a version with a suffix, like $version-rc.1" ;;
@@ -84,7 +82,6 @@ notes="$(awk -v v="$version" '$1 == "##" && $2 == v { found=1; print; next } fou
 [ -n "$notes" ] || die 'This version is missing from docs/CHANGELOG.md'
 printf '%s\n' "$notes" | awk '/^[[:space:]]*- / { found=1 } END { exit !found }' || die 'The release notes have no changes'
 
-# Tools, the signing key and its four public copies, and the pinned runtime.
 for tool in node npm git ssh-keygen shellcheck; do has "$tool" || die "Missing $tool"; done
 if [ "$mode" != --dry-run ]; then has gh || die 'Missing gh'; fi
 if [ ! -f "$key" ] || [ ! -f "$key.pub" ]; then die 'Release signing key is missing; run --setup-key'; fi
@@ -94,11 +91,9 @@ public="$(awk 'NR == 1 { print $1, $2 }' "$key.pub")"
 [ "$public" = "$(sed -n "s/^  [$]ReleaseKey = '\(.*\)'$/\1/p" "$psinstaller")" ] || die 'PowerShell installer release key differs from the pinned key'
 [ "$public" = "$(sed -n "s/^export const releaseKey = '\(.*\)';$/\1/p" "$appkey")" ] || die 'Application release key differs from the pinned key'
 node --input-type=module -e 'import {readFileSync} from "node:fs"; const expected=JSON.parse(readFileSync("tools/runtime-lock.json","utf8")).version; if(process.version!==expected) throw new Error("Use the pinned release runtime "+expected);'
-# Every target the runtime lock pins gets a package.
 targets="$(node tools/targets.mjs)"
 [ -n "$targets" ] || die 'The runtime lock names no targets'
 
-# Publishing needs a signed-in gh, npm for a release, a clean pushed main and an unused version.
 if [ "$mode" != --dry-run ]; then
   gh auth status >/dev/null 2>&1 || die 'Sign in with gh auth login before publishing'
   if [ "$mode" = --release ]; then npm whoami >/dev/null 2>&1 || die 'Sign in with npm login before publishing'; fi
@@ -125,7 +120,6 @@ shellcheck install/install.sh scripts/release.sh
 printf 'Build and sign Frost %s? [y/N] ' "$version"
 IFS= read -r answer
 case "$answer" in y | Y) ;; *) exit 0 ;; esac
-# Build and audit a package per target. package.mjs prints each archive's checksums.txt line.
 out="$root/releases/$version"
 [ ! -e "$out" ] || die 'The release output folder already exists'
 mkdir -p "$out"
@@ -156,7 +150,6 @@ flags=()
 gh release create "$version" --repo "$repo" --target "$(git rev-parse HEAD)" --title "Frost $version" \
   --notes-file "$out/release-notes.md" "${flags[@]}" "$out"/frost_* "$out/checksums.txt" "$out/checksums.txt.sig"
 
-# Publish getfrost once its release exists, since it downloads that release. npm asks for a one-time code.
 if [ "$mode" = --release ]; then
   npm publish "$out/npm" --access public || die "The release is published, but npm publish failed. Retry with: npm publish $out/npm --access public"
 fi

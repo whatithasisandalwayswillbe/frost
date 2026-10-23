@@ -1,23 +1,18 @@
 #!/bin/sh
 # Installs the latest Frost release.
 #
-#   curl -fsSL https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.sh | sh
+# Supported OS: macOS, Linux (including WSL), and Windows through Git Bash, MSYS2, or Cygwin.
 #
-# Works on macOS, Linux (including WSL) and Windows through Git Bash, MSYS2
-# or Cygwin. Downloads the package for your platform, checks that the
-# release's checksums.txt was signed by the Frost release key, checks the
-# download against it, and installs a launcher and its bundled runtime.
-#
-# Environment:
-#   FROST_VERSION      install this tag instead of the latest, e.g. v0.1.0
-#   FROST_INSTALL_DIR  install here instead of picking a directory
-#   FROST_BASE_URL     download from a mirror (expects the same file names)
+# This script:
+# - Detects platform architecture and downloads the matching package.
+# - Verifies 'checksums.txt' against the official Frost release key.
+# - Validates the downloaded package integrity against the checksum.
+# - Installs the launcher alongside its bundled runtime.
 set -eu
 
 REPO="whatithasisandalwayswillbe/frost"
 
-# Public key that signs every release's checksums.txt. Same as
-# install/release-signing.pub. Written by scripts/release.sh --setup-key.
+# Public key
 RELEASE_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHO/g64dTbRW3poi7pdiPKgljYdHXG+TZeZQg4cfzAsV"
 
 say() { printf '%s\n' "$*"; }
@@ -58,10 +53,9 @@ sha256() {
   fi
 }
 
-# Platform.
 case "$(uname -s)" in
   Darwin) os=darwin ;;
-  Linux) os=linux ;; # includes WSL
+  Linux) os=linux ;;
   MINGW* | MSYS* | CYGWIN*) os=windows ;;
   *) die "unsupported OS: $(uname -s)" ;;
 esac
@@ -101,8 +95,6 @@ say "Downloading Frost $version for $os/$arch"
 fetch "$base/$archive" "$tmp/$archive" || die "download failed: $base/$archive"
 fetch "$base/checksums.txt" "$tmp/checksums.txt" || die "download failed: $base/checksums.txt"
 
-# The signature proves checksums.txt came from the Frost release key, not
-# just from whoever controls the download.
 [ -n "$RELEASE_KEY" ] || die "the release signing key is missing"
 fetch "$base/checksums.txt.sig" "$tmp/checksums.txt.sig" || die "download failed: $base/checksums.txt.sig"
 printf 'frost-release %s\n' "$RELEASE_KEY" >"$tmp/allowed_signers"
@@ -131,8 +123,6 @@ if [ "$ext" = zip ]; then
     FROST_ARCHIVE_PATH=$(cygpath -w "$tmp/$archive" 2>/dev/null || echo "$tmp/$archive")
     FROST_EXTRACT_PATH=$(cygpath -w "$tmp/x" 2>/dev/null || echo "$tmp/x")
     export FROST_ARCHIVE_PATH FROST_EXTRACT_PATH
-    # PowerShell expands these environment variables, not the POSIX shell.
-    # shellcheck disable=SC2016
     powershell.exe -NoProfile -Command 'Expand-Archive -LiteralPath $env:FROST_ARCHIVE_PATH -DestinationPath $env:FROST_EXTRACT_PATH'
   else
     die "need unzip to extract $archive"

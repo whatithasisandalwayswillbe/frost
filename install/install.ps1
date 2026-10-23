@@ -1,31 +1,20 @@
 # Installs the latest Frost release on Windows.
+# Compatible with Windows PowerShell 5.1 and PowerShell 7.
 #
-#   irm https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.ps1 | iex
-#
-# Works in Windows PowerShell 5.1 and PowerShell 7. Downloads the package for your processor, checks that the
-# release's checksums.txt was signed by the Frost release key, checks the download against it, and installs a
-# launcher and its bundled runtime.
-#
-# Environment:
-#   FROST_VERSION      install this tag instead of the latest, e.g. v0.1.0
-#   FROST_INSTALL_DIR  put the launcher here instead of %LOCALAPPDATA%\frost\bin
-#   FROST_BASE_URL     download from a mirror (expects the same file names)
-
-# Everything runs in one script block, so iex leaves no variables behind. A failure never calls exit, which would
-# close the window iex runs in; it only exits with 1 when the script runs as a file.
+# This script:
+# - Downloads the appropriate package for your processor architecture.
+# - Verifies that 'checksums.txt' is signed by the official Frost release key.
+# - Validates the download against the verified checksum.
+# - Installs the launcher and its bundled runtime.
 & {
   $ErrorActionPreference = 'Stop'
   $ProgressPreference = 'SilentlyContinue'
 
   $Repo = 'whatithasisandalwayswillbe/frost'
 
-  # Public key that signs every release's checksums.txt. Same as install/release-signing.pub. Written by
-  # scripts/release.sh --setup-key.
+  # Public key
   $ReleaseKey = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHO/g64dTbRW3poi7pdiPKgljYdHXG+TZeZQg4cfzAsV'
 
-  # Windows has no SSH signature check of its own, so the release's bundled runtime runs this one once Windows has
-  # confirmed the OpenJS Foundation signed it. It makes the same checks as src/platform/signature.ts: an SSH
-  # signature in the "file" namespace, by the release key, over checksums.txt. It prints ok or exits with 1.
   $Verifier = @'
 'use strict';
 const { readFileSync } = require('node:fs');
@@ -133,8 +122,6 @@ try {
     }
   }
 
-  # GitHub's /releases/latest redirects to /releases/tag/<tag>. WebRequest follows it the same way in Windows
-  # PowerShell and PowerShell 7.
   function Get-LatestVersion {
     try {
       $request = [Net.WebRequest]::Create("https://github.com/$Repo/releases/latest")
@@ -157,8 +144,6 @@ try {
     }
     $false
   }
-
-  # Runs the package's runtime without the caller's NODE_OPTIONS, which could load other code into it.
   function Invoke-Runtime([string]$Node, [string[]]$Arguments) {
     $options = $env:NODE_OPTIONS
     Remove-Item Env:NODE_OPTIONS -ErrorAction SilentlyContinue
@@ -174,8 +159,6 @@ try {
     if ($env:OS -ne 'Windows_NT') { throw 'install.ps1 is target-specific to Windows. Use install.sh on macOS or Linux environments' }
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-    # Platform. The registry names the processor itself, so an ARM64 PC gets the arm64 build even when this
-    # PowerShell runs as x64 under emulation.
     $processor = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PROCESSOR_ARCHITECTURE
     switch ($processor) {
       'AMD64' { $arch = 'amd64' }
@@ -205,7 +188,6 @@ try {
     Save-Download "$base/checksums.txt" $sums
     Save-Download "$base/checksums.txt.sig" $signature
 
-    # A damaged download stops here, before anything inside it runs.
     $found = @(Get-Content -LiteralPath $sums | ForEach-Object {
         $fields = -split $_
         if ($fields.Count -ge 2 -and ($fields[1] -ceq $archive -or $fields[1] -ceq "*$archive")) { $fields[0] }
@@ -216,9 +198,6 @@ try {
     $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($want -ne $got) { throw "checksum mismatch for $archive (expected $want, got $got)" }
 
-    # The signature proves checksums.txt came from the Frost release key, not just from whoever controls the
-    # download. Only the runtime comes out of the archive for this, and only an OpenJS Foundation signature lets
-    # it run.
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
     $check = Join-Path $tmp 'check'
     New-Item -ItemType Directory -Path $check | Out-Null
@@ -249,7 +228,6 @@ try {
     Write-Host 'Signature ok'
     Write-Host 'Checksum ok'
 
-    # ExtractToDirectory refuses entries that would land outside the folder.
     $package = Join-Path $tmp 'x'
     [IO.Compression.ZipFile]::ExtractToDirectory($zip, $package)
     foreach ($required in @(
@@ -261,7 +239,6 @@ try {
       if (-not (Test-Path -LiteralPath (Join-Path $package $required[0]) -PathType Leaf)) { throw $required[1] }
     }
 
-    # Pick where to install the launcher.
     $dir = $env:FROST_INSTALL_DIR
     $default = -not $dir
     if ($default) {
@@ -275,9 +252,6 @@ try {
     Invoke-Runtime (Join-Path $package 'runtime\bin\node.exe') @((Join-Path $package 'install.mjs'), $package, $dir) | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'package install failed' }
 
-    # The default launcher folder goes on the user's PATH. The registry value keeps its unexpanded form, like
-    # %USERPROFILE%\bin, and its expandable type. Setting a throwaway user variable then tells running programs,
-    # such as Explorer, that the environment changed.
     if (-not (Test-OnPath $env:Path $dir)) {
       if ($default) {
         $environment = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
