@@ -9,13 +9,13 @@ Releases include the Node.js runtime, scripts and assets. You don't need Node.js
 On macOS and Linux:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.sh | sh
+curl -fsSL https://getfro.st/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.ps1 | iex
+irm https://getfro.st/install.ps1 | iex
 ```
 
 Both installers check the release signature and archive checksum, install the application in your user profile, and put a `frost` launcher in a folder on your `PATH`.

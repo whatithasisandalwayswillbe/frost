@@ -94,6 +94,6 @@ Notable changes to Frost, newest release first. Each release lists what was adde
 
 - **Frost installs with one line.** `install/install.sh` detects macOS, Linux, WSL or Git Bash, checks signed checksums, and installs the complete package with a launcher. It requires `ssh-keygen` from OpenSSH 8.1 or newer and refuses an unverified package.
 
-- **Windows installs from PowerShell.** `irm https://raw.githubusercontent.com/whatithasisandalwayswillbe/frost/main/install/install.ps1 | iex` checks the release the same way, using the release's own OpenJS-signed runtime, so it needs nothing else installed. It puts `frost` in `%LocalAppData%\frost\bin` and adds that folder to your `PATH`.
+- **Windows installs from PowerShell.** `irm https://getfro.st/install.ps1 | iex` checks the release the same way, using the release's own OpenJS-signed runtime, so it needs nothing else installed. It puts `frost` in `%LocalAppData%\frost\bin` and adds that folder to your `PATH`.
 
 - **npm and pnpm can install Frost.** `npm install -g getfrost` or `pnpm add -g getfrost` gives you a `frost` command that installs the signed release on its first run and then runs it. Frost keeps updating itself, and the package needs Node.js 22 or newer.
